@@ -1,0 +1,45 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* default colours: Supabase `theme_colors` overrides these */
+:root {
+  --c-bg: #f4f4f0;
+  --c-text: #18181b;
+  --c-surface: #ece7de;
+  --c-line: rgba(0, 0, 0, 0.12);
+  --c-nav: rgba(244, 244, 240, 0.8);
+  --c-btn: #18181b;
+  --c-btn-ink: #ffffff;
+  --c-accent: #b8862b;
+  --c-leather-a: #5a372a;
+  --c-leather-b: #2b1712;
+}
+.dark {
+  --c-bg: #09090b;
+  --c-text: #fafafa;
+  --c-surface: #18181b;
+  --c-line: rgba(255, 255, 255, 0.16);
+  --c-nav: rgba(9, 9, 11, 0.8);
+  --c-btn: #ffffff;
+  --c-btn-ink: #000000;
+  --c-accent: #e8c15a;
+}
+
+/* lets us write bg-bg, text-ink, bg-surface, border-line, bg-btn ... */
+@theme inline {
+  --color-bg: var(--c-bg);
+  --color-ink: var(--c-text);
+  --color-surface: var(--c-surface);
+  --color-line: var(--c-line);
+  --color-nav: var(--c-nav);
+  --color-btn: var(--c-btn);
+  --color-btn-ink: var(--c-btn-ink);
+  --color-accent: var(--c-accent);
+}
+
+html, body {
+  overflow-x: clip;
+  background: var(--c-bg);
+  color: var(--c-text);
+}
+
