@@ -132,7 +132,7 @@ function Paper({ back, children }) {
 /* ---------- The 3D notebook with the page-turn ---------- */
 function Notebook({ label, tagline, counter, flipping, idKey, onFlipped, onClick }) {
   return (
-    <div className="relative mt-9 max-w-sm" style={{ perspective: 1400 }}>
+    <div className="relative mt-9 w-full max-w-sm pr-1" style={{ perspective: 1400 }}>
       {/* soft shadow under the notebook */}
       <div className="pointer-events-none absolute -bottom-7 left-6 right-2 h-6 rounded-[50%] bg-black/30 blur-lg" />
 
@@ -306,7 +306,7 @@ function Portrait({ src, name, reveal }) {
   return (
     <div
       ref={ref}
-      className="relative h-[430px] touch-pan-y md:h-full"
+      className="relative h-[360px] w-full touch-pan-y sm:h-[420px] md:h-full md:w-auto"
       onPointerEnter={reveal ? onEnter : undefined}
       onPointerMove={reveal ? onMove : undefined}
       onPointerLeave={reveal ? onLeave : undefined}
@@ -314,7 +314,7 @@ function Portrait({ src, name, reveal }) {
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.div
           key={src || "none"}
-          className="relative h-full"
+          className="relative h-full w-full md:w-auto"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -327,7 +327,7 @@ function Portrait({ src, name, reveal }) {
                 src={src}
                 alt={name}
                 draggable={false}
-                className="block h-full w-auto max-w-none select-none object-contain object-bottom"
+                className="block h-full w-full max-w-full select-none object-contain object-bottom md:w-auto md:max-w-none"
                 style={{
                   filter: reveal
                     ? "grayscale(1) contrast(1.06) drop-shadow(0 18px 24px rgba(0,0,0,.22))"
@@ -401,14 +401,14 @@ export default function Hero() {
     // Bigger rem number = smaller section, smaller number = taller section.
     <section id="home" className="-mt-8 flex min-h-[85vh] flex-col md:h-[calc(100svh-8rem)] md:min-h-[600px]">
       {/* photo side is wider than the text side; the row is capped to the section height */}
-      <div className="grid min-h-0 flex-1 gap-6 pt-0 md:grid-cols-[1fr_1.25fr] md:grid-rows-[minmax(0,1fr)] md:gap-8">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 pt-0 md:grid-cols-[1fr_1.25fr] md:grid-rows-[minmax(0,1fr)] md:gap-8">
         {/* text side starts at the top */}
-        <div className="flex min-h-0 flex-col justify-start pb-6 md:pt-0">
-          <p className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] opacity-70">
+        <div className="flex min-h-0 min-w-0 flex-col justify-start pb-6 md:pt-0">
+          <p className="mb-4 flex items-center gap-2 pr-14 text-[10px] font-semibold uppercase tracking-[0.25em] opacity-70 sm:text-xs sm:tracking-[0.3em] md:pr-0">
             <span className="text-base leading-none">*</span>
             {t("independent")}
           </p>
-          <h1 className="text-4xl font-bold leading-tight md:text-5xl">
+          <h1 className="break-words pr-14 text-3xl font-bold leading-tight sm:text-4xl md:pr-0 md:text-5xl">
             {t("hello")} {name}.
           </h1>
           <p className="mt-2 text-lg opacity-70">{t("iam")}</p>
@@ -458,8 +458,8 @@ export default function Hero() {
         </div>
 
         {/* Cutout portrait: fills its column height and stands on the line above the bottom strip */}
-        <div className="relative flex min-h-0 items-end justify-center">
-          <div className="relative md:h-full">
+        <div className="relative flex min-h-0 min-w-0 items-end justify-center">
+          <div className="relative w-full md:h-full md:w-auto">
             <Portrait src={photo} name={name} reveal={hover} />
 
             
