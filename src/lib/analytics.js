@@ -41,6 +41,13 @@ function applyConsent(v) {
 export function setConsent(v) {
   try { localStorage.setItem(KEY, v); } catch { /* ignore */ }
   applyConsent(v);
+  if (v === "granted") {
+    track("page_view", {
+      page_location: location.href,
+      page_path: location.pathname + location.hash,
+      page_title: document.title,
+    });
+  }
 }
 
 export function initAnalytics() {
