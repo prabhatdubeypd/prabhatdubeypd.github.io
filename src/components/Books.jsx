@@ -72,73 +72,94 @@ function useIsTouch() {
   return touch;
 }
 
-/* ---------- Keeps all books on ONE line by scaling the row to fit ---------- */
-function FitRow({ n, overlay, children }) {
+function usePhone() {
+  const [p, setP] = useState(() => window.innerWidth < 640);
+  useEffect(() => {
+    const f = () => setP(window.innerWidth < 640);
+    window.addEventListener("resize", f);
+    return () => window.removeEventListener("resize", f);
+  }, []);
+  return p;
+}
+
+const NAVH = 56; // height of your fixed navbar
+
+function FitRow({ n, phone, trackRef, step, overlay, children }) {
   const outer = useRef(null);
   const inner = useRef(null);
-  const [m, setM] = useState({ s: 1, h: 0, avail: 0, wrap: false });
-  const [ai, setAi] = useState(0); // book in the middle while swiping (phones)
+  const touchRef = useRef(null);
+  const [m, setM] = useState({ s: 1, h: 0, avail: 0 });
+  const [ai, setAi] = useState(0); // book in the middle (phones)
+  const cl = (v, a, b) => Math.min(b, Math.max(a, v));
 
   useLayoutEffect(() => {
     const calc = () => {
       if (!outer.current || !inner.current) return;
       const avail = outer.current.clientWidth;
-      if (avail < 640) {
-        setM({ s: 1, h: 0, avail, wrap: true }); // phones: swipe sideways instead of tiny books
-        return;
-      }
+      if (phone) { setM({ s: 1, h: 0, avail }); return; }
       const total = SLOT * n;
       const s = Math.min(1, avail / total);
-      setM({ s, h: inner.current.offsetHeight * s, avail, wrap: false });
+      setM({ s, h: inner.current.offsetHeight * s, avail });
     };
     calc();
     const ro = new ResizeObserver(calc);
     ro.observe(outer.current);
     ro.observe(inner.current);
     return () => ro.disconnect();
-  }, [n]);
+  }, [n, phone]);
 
-  const onScroll = (e) => {
-    if (!m.wrap) return;
-    const i = Math.round(e.currentTarget.scrollLeft / SLOT);
-    setAi(Math.max(0, Math.min(n - 1, i)));
+  // phones: the page scroll moves the row sideways
+  useEffect(() => {
+    if (!phone) return;
+    const place = () => {
+      const t = trackRef.current;
+      if (!t || !inner.current) return;
+      const p = cl((NAVH - t.getBoundingClientRect().top) / step, 0, n - 1);
+      inner.current.style.transform = `translate3d(${(m.avail - SLOT) / 2 - p * SLOT}px,0,0)`;
+      setAi(Math.round(p));
+    };
+    place();
+    window.addEventListener("scroll", place, { passive: true });
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place);
+      window.removeEventListener("resize", place);
+    };
+  }, [phone, n, step, m.avail, trackRef]);
+
+  const goTo = (i) => {
+    const t = trackRef.current;
+    if (!t) return;
+    const top = t.getBoundingClientRect().top + window.scrollY - NAVH + cl(i, 0, n - 1) * step;
+    window.scrollTo({ top, behavior: "smooth" });
   };
-  const goTo = (i) => inner.current?.scrollTo({ left: i * SLOT, behavior: "smooth" });
 
-  const total = SLOT * n;
-  return (
-    <div ref={outer} className="relative w-full" style={m.wrap ? undefined : { height: m.h || undefined }}>
-      <div
-        ref={inner}
-        onScroll={onScroll}
-        className={
-          m.wrap
-            ? "flex flex-nowrap snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
-            : "relative flex flex-nowrap justify-center"
-        }
-        style={
-          m.wrap
-            ? {
-                paddingInline: Math.max(0, (m.avail - SLOT) / 2),
-                paddingTop: 24,
-                paddingBottom: 40,
-                scrollbarWidth: "none",
-                WebkitOverflowScrolling: "touch",
-              }
-            : {
-                width: total,
-                transform: `scale(${m.s})`,
-                transformOrigin: "top left",
-                marginLeft: Math.max(0, (m.avail - total * m.s) / 2),
-              }
-        }
-      >
-        {children}
-        {overlay && !m.wrap ? overlay(false) : null}
-      </div>
+  const onTouchStart = (e) => {
+    const t = e.touches[0];
+    touchRef.current = { x: t.clientX, y: t.clientY };
+  };
+  const onTouchEnd = (e) => {
+    const s = touchRef.current;
+    touchRef.current = null;
+    if (!s) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - s.x;
+    const dy = t.clientY - s.y;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) goTo(ai + (dx < 0 ? 1 : -1));
+  };
 
-      {/* dots (phones) */}
-      {m.wrap && (
+  if (phone) {
+    return (
+      <div ref={outer} className="relative w-full">
+        <div
+          ref={inner}
+          className="flex flex-nowrap"
+          style={{ width: SLOT * n, paddingTop: 24, paddingBottom: 16, touchAction: "pan-y", willChange: "transform" }}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+        >
+          {children}
+        </div>
         <div className="flex items-center justify-center gap-2 pb-4">
           {Array.from({ length: n }).map((_, i) => (
             <button
@@ -150,7 +171,26 @@ function FitRow({ n, overlay, children }) {
             />
           ))}
         </div>
-      )}
+      </div>
+    );
+  }
+
+  const total = SLOT * n;
+  return (
+    <div ref={outer} className="relative w-full" style={{ height: m.h || undefined }}>
+      <div
+        ref={inner}
+        className="relative flex flex-nowrap justify-center"
+        style={{
+          width: total,
+          transform: `scale(${m.s})`,
+          transformOrigin: "top left",
+          marginLeft: Math.max(0, (m.avail - total * m.s) / 2),
+        }}
+      >
+        {children}
+        {overlay ? overlay(false) : null}
+      </div>
     </div>
   );
 }
@@ -872,7 +912,7 @@ function ZoomPage({ rect, dir, c, lang, dark, onDone }) {
 /* ---------- The 3D wall: a real CSS-3D room (back wall, side walls, ceiling, floor ledge) ---------- */
 const PERSP = 1100; // camera distance
 
-function Wall({ dark, parallax, onClick, children }) {
+function Wall({ dark, parallax, onClick, header, children }) {
   const outerRef = useRef(null);
   const stageRef = useRef(null);
   const target = useRef({ x: 50, y: 50 });
@@ -889,7 +929,7 @@ function Wall({ dark, parallax, onClick, children }) {
       const I = Math.max(24, Math.min((W - 1260) / 2, W * 0.14)); // how far the side walls are inset
       const a = W / 2 - I;
       const L = Math.max(80, PERSP * (1 - a / (W / 2)) * 1.15); // how far the room comes forward
-      setG({ W, off, I, L, ET: W < 640 ? 70 : 120, EB: W < 640 ? 44 : 70 });
+            setG({ W, off, I, L, ET: W < 640 ? 40 : 60, EB: W < 640 ? 44 : 70 });
     };
     calc();
     window.addEventListener("resize", calc);
@@ -963,7 +1003,7 @@ function Wall({ dark, parallax, onClick, children }) {
       style={{
         width: g.W,
         marginLeft: -g.off,
-        marginTop: 40,
+                marginTop: 0,
         paddingTop: g.ET,
         background: C.fill,
         WebkitMaskImage: "linear-gradient(180deg, transparent 0, #000 34px)",
@@ -1031,7 +1071,10 @@ function Wall({ dark, parallax, onClick, children }) {
 
           {/* the doors + books (on the back wall) */}
           <div className="relative" style={{ marginLeft: g.I, marginRight: g.I }}>
-            <div className="relative px-3 pt-16 md:px-8">{children}</div>
+                        <div className="relative px-3 pt-10 md:px-8">
+              {header}
+              {children}
+            </div>
             {/* skirting board */}
             <div
               className="relative z-[6]"
@@ -1063,6 +1106,24 @@ export default function Books() {
   const [rect, setRect] = useState(null);
   const pageRefs = useRef({});
   const openTimer = useRef(null);
+
+    const phone = usePhone();
+  const trackRef = useRef(null);
+  const stickyRef = useRef(null);
+  const [wallH, setWallH] = useState(0);
+  const [step, setStep] = useState(() => Math.round(window.innerHeight * 0.55)); // scroll distance per book
+
+  useEffect(() => {
+    const f = () => setStep(Math.round(window.innerHeight * 0.55));
+    window.addEventListener("resize", f);
+    return () => window.removeEventListener("resize", f);
+  }, []);
+  useEffect(() => {
+    if (!phone || !stickyRef.current) return;
+    const ro = new ResizeObserver(() => setWallH(stickyRef.current?.offsetHeight || 0));
+    ro.observe(stickyRef.current);
+    return () => ro.disconnect();
+  }, [phone]);
 
   const anim = features.bookAnimation !== false;
   const hover = features.hoverEffects !== false;
@@ -1158,26 +1219,37 @@ export default function Books() {
   }, []);
 
   return (
-    <section id="projects" className="scroll-mt-20 pb-4 pt-20">
-      <div className="text-center">
-        <p className="flex items-center justify-center gap-3 text-xs font-semibold uppercase tracking-[0.35em] opacity-70">
-          <span className="h-px w-10 bg-current opacity-50" />
-          {t("books_eyebrow")}
-          <span className="h-px w-10 bg-current opacity-50" />
-        </p>
-        <h2 className="mx-auto mt-4 max-w-4xl font-serif text-4xl font-bold leading-[1.05] tracking-tight md:text-6xl">
-          {t("books_title")}
-        </h2>
-        <p className="mx-auto mt-4 max-w-xl opacity-70">{t("books_sub")}</p>
-      </div>
-
-                 <Wall
+      <section id="projects" className="scroll-mt-20 pb-4 pt-6">
+      <div
+        ref={trackRef}
+        style={phone && wallH ? { height: wallH + (categories.length - 1) * step } : undefined}
+      >
+      <div ref={stickyRef} style={phone ? { position: "sticky", top: NAVH } : undefined}>
+      <Wall
         dark={dark}
         parallax={features.wallParallax === true}
         onClick={() => { if (touch && phase === "idle") setFocusId(null); }}
+        header={
+          <div className="mb-6 text-center md:mb-8">
+            <p className="flex items-center justify-center gap-3 text-[10px] font-semibold uppercase tracking-[0.35em] opacity-70 md:text-xs">
+              <span className="h-px w-8 bg-current opacity-50 md:w-10" />
+              {t("books_eyebrow")}
+              <span className="h-px w-8 bg-current opacity-50 md:w-10" />
+            </p>
+            <h2 className="mx-auto mt-2 max-w-4xl font-serif text-3xl font-bold leading-[1.05] tracking-tight md:text-5xl">
+              {t("books_title")}
+            </h2>
+            <p className="mx-auto mt-2 max-w-xl text-sm opacity-70 md:text-base">{t("books_sub")}</p>
+          </div>
+        }
       >
-        <FitRow
+
+        
+                <FitRow
           n={categories.length}
+          phone={phone}
+          trackRef={trackRef}
+          step={step}
           overlay={(wrap) => (
             <AnimatePresence mode="wait">
               {cur && (
@@ -1218,6 +1290,8 @@ export default function Books() {
           ))}
         </FitRow>
       </Wall>
+            </div>
+      </div>
 
       {/* cursor-following label: only while the cursor is on a book (desktop) */}
       {!touch && <CursorPill show={!!focusId && phase === "idle"} label={t("click_to_enter")} />}

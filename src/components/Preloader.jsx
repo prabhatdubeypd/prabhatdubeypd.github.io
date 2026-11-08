@@ -14,15 +14,21 @@ const PALETTE = [
   { bg: "linear-gradient(180deg,#d3c1c1,#b9a2a2)", fg: "#3b2f2f" }, // rose
 ];
 const FALLBACK = ["Prabhat Dubey", "Web Development", "App Development", "UI/UX Design", "Beyond the Code"];
-const STEP = 84; // how far each pill sits below the one before
-const PILL_H = 140;
 const KEY = "pre_labels_";
 
 export default function Preloader() {
   const { lang } = useSettings();
   const { profile, categories, features, progress } = useData();
   const [show, setShow] = useState(true);
+  const [leaving, setLeaving] = useState(false); // true = pills split left / right
   const [n, setN] = useState(0);
+  const [small, setSmall] = useState(() => window.innerWidth < 640);
+
+  useEffect(() => {
+    const f = () => setSmall(window.innerWidth < 640);
+    window.addEventListener("resize", f);
+    return () => window.removeEventListener("resize", f);
+  }, []);
 
   // names: from the database when it has loaded, else the ones saved last visit, else defaults
   const live = profile && categories ? [tx(profile.name, lang), ...categories.map((c) => tx(c.name, lang))] : null;
@@ -47,11 +53,12 @@ export default function Preloader() {
     return () => clearInterval(id);
   }, [show, progress]);
 
-  // 100 reached: wait a moment, then slide away
+  // 100 reached: pills split left / right, then the screen lifts away
   useEffect(() => {
     if (n < 100) return;
-    const id = setTimeout(() => setShow(false), 500);
-    return () => clearTimeout(id);
+    const a = setTimeout(() => setLeaving(true), 250);
+    const b = setTimeout(() => setShow(false), 700);
+    return () => { clearTimeout(a); clearTimeout(b); };
   }, [n]);
 
   // preloader switched off in the database
@@ -64,8 +71,13 @@ export default function Preloader() {
     return () => { document.body.style.overflow = ""; };
   }, [show]);
 
-  const visible = Math.max(1, Math.ceil((n / 100) * labels.length));
+  // compact sizes: each pill is only a little taller than the band you can see
+  const STEP = small ? 34 : 40; // distance between pills (= visible band)
+  const PILL_H = STEP + (small ? 12 : 14); // last pill: just a little extra
+  const LINE = small ? 18 : 20; // text line height
+  const PAD_TOP = Math.round((STEP - LINE) / 2); // centres the text in the visible band
   const stackH = (labels.length - 1) * STEP + PILL_H;
+  const visible = Math.max(1, Math.ceil((n / 100) * labels.length));
 
   return (
     <AnimatePresence>
@@ -74,7 +86,7 @@ export default function Preloader() {
           key="preloader"
           className="fixed inset-0 z-[70] overflow-hidden bg-[#0a0908] text-white"
           exit={{ y: "-100%" }}
-          transition={{ duration: 0.9, ease: [0.76, 0, 0.24, 1] }}
+          transition={{ duration: 0.45, ease: [0.76, 0, 0.24, 1] }}
         >
           {/* soft warm glow */}
           <div
@@ -87,26 +99,37 @@ export default function Preloader() {
 
           {/* stacked coloured pills */}
           <div
-            className="absolute left-1/2 top-[44%] w-[min(78vw,520px)] -translate-x-1/2 -translate-y-1/2"
+            className="absolute left-1/2 top-[42%] w-[min(58vw,270px)] -translate-x-1/2 -translate-y-1/2"
             style={{ height: stackH }}
           >
             {labels.map((label, k) => {
               const p = PALETTE[k % PALETTE.length];
               const shown = k < visible;
+              const dir = k % 2 === 0 ? -1 : 1; // even pills leave to the left, odd to the right
               return (
                 <motion.div
                   key={k}
-                  initial={{ opacity: 0, y: k * STEP + 70 }}
-                  animate={{ opacity: shown ? 1 : 0, y: shown ? k * STEP : k * STEP + 70 }}
-                  transition={{ type: "spring", stiffness: 140, damping: 20 }}
+                  initial={{ opacity: 0, x: 0, y: k * STEP + 40 }}
+                  animate={
+                    leaving
+                      ? { opacity: 0, x: dir * 420, y: k * STEP }
+                      : { opacity: shown ? 1 : 0, x: 0, y: shown ? k * STEP : k * STEP + 40 }
+                  }
+                  transition={
+                    leaving
+                      ? { duration: 0.4, ease: [0.5, 0, 0.75, 0], delay: k * 0.03 }
+                      : { type: "spring", stiffness: 140, damping: 20 }
+                  }
                   style={{
                     zIndex: k,
                     height: PILL_H,
+                    paddingTop: PAD_TOP,
+                    lineHeight: `${LINE}px`,
                     background: p.bg,
                     color: p.fg,
-                    boxShadow: "0 -6px 18px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.12)",
+                    boxShadow: "0 -5px 14px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.12)",
                   }}
-                  className="absolute inset-x-0 top-0 rounded-full px-10 pt-[18px] text-[17px] font-medium"
+                  className="absolute inset-x-0 top-0 truncate rounded-full px-5 text-[13px] font-medium sm:px-6 sm:text-sm"
                 >
                   {label}
                 </motion.div>
@@ -115,18 +138,22 @@ export default function Preloader() {
           </div>
 
           {/* bottom: caption + real counter + progress line */}
-          <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-6 px-6 pb-10 md:px-10">
+          <motion.div
+            className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-6 px-6 pb-8 md:px-10"
+            animate={{ opacity: leaving ? 0 : 1 }}
+            transition={{ duration: 0.25 }}
+          >
             <div>
-              <p className="font-mono text-xs uppercase tracking-[0.35em] opacity-60">Opening up the work</p>
-              <p className="mt-2 text-7xl font-bold leading-none tabular-nums md:text-9xl">{n}</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.3em] opacity-60 sm:text-xs">Opening up the work</p>
+              <p className="mt-2 text-5xl font-bold leading-none tabular-nums md:text-7xl">{n}</p>
             </div>
-            <div className="mb-3 h-px w-32 bg-white/15 md:w-72">
+            <div className="mb-2 h-px w-24 bg-white/15 md:w-56">
               <div
                 className="h-[2px] -translate-y-[0.5px]"
                 style={{ width: `${n}%`, background: "linear-gradient(90deg,#8a6a2a,#f3d36b)" }}
               />
             </div>
-          </div>
+          </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
