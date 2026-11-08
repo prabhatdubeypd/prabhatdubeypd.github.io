@@ -43,6 +43,7 @@ const SLOT = 310; // width of one door slot
 const ARCH_W = 270; // arch (door) width
 const ARCH_H = 470; // arch (door) height = slot height
 const OPEN_MS = 1250; // time the cover takes to open before the zoom starts
+const SHOW_TITLE = true; // true = gold title, author and number on top of the cover image; false = image only
 
 const splitQ = (q) => {
   const m = q.match(/^([\s\S]*?)\{([\s\S]+?)\}([\s\S]*)$/);
@@ -72,18 +73,18 @@ function useIsTouch() {
 }
 
 /* ---------- Keeps all books on ONE line by scaling the row to fit ---------- */
-// `overlay(wrap)` is drawn on top of the row (in the same scaled space)
 function FitRow({ n, overlay, children }) {
   const outer = useRef(null);
   const inner = useRef(null);
   const [m, setM] = useState({ s: 1, h: 0, avail: 0, wrap: false });
+  const [ai, setAi] = useState(0); // book in the middle while swiping (phones)
 
   useLayoutEffect(() => {
     const calc = () => {
       if (!outer.current || !inner.current) return;
       const avail = outer.current.clientWidth;
       if (avail < 640) {
-        setM({ s: 1, h: 0, avail, wrap: true }); // small phones: wrap instead of tiny books
+        setM({ s: 1, h: 0, avail, wrap: true }); // phones: swipe sideways instead of tiny books
         return;
       }
       const total = SLOT * n;
@@ -97,15 +98,33 @@ function FitRow({ n, overlay, children }) {
     return () => ro.disconnect();
   }, [n]);
 
+  const onScroll = (e) => {
+    if (!m.wrap) return;
+    const i = Math.round(e.currentTarget.scrollLeft / SLOT);
+    setAi(Math.max(0, Math.min(n - 1, i)));
+  };
+  const goTo = (i) => inner.current?.scrollTo({ left: i * SLOT, behavior: "smooth" });
+
   const total = SLOT * n;
   return (
     <div ref={outer} className="relative w-full" style={m.wrap ? undefined : { height: m.h || undefined }}>
       <div
         ref={inner}
-        className={m.wrap ? "flex flex-wrap justify-center gap-y-12" : "relative flex flex-nowrap justify-center"}
+        onScroll={onScroll}
+        className={
+          m.wrap
+            ? "flex flex-nowrap snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
+            : "relative flex flex-nowrap justify-center"
+        }
         style={
           m.wrap
-            ? undefined
+            ? {
+                paddingInline: Math.max(0, (m.avail - SLOT) / 2),
+                paddingTop: 24,
+                paddingBottom: 40,
+                scrollbarWidth: "none",
+                WebkitOverflowScrolling: "touch",
+              }
             : {
                 width: total,
                 transform: `scale(${m.s})`,
@@ -115,8 +134,23 @@ function FitRow({ n, overlay, children }) {
         }
       >
         {children}
-        {overlay ? overlay(m.wrap) : null}
+        {overlay && !m.wrap ? overlay(false) : null}
       </div>
+
+      {/* dots (phones) */}
+      {m.wrap && (
+        <div className="flex items-center justify-center gap-2 pb-4">
+          {Array.from({ length: n }).map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              aria-label={`Book ${i + 1}`}
+              onClick={() => goTo(i)}
+              className={`h-2 rounded-full transition-all duration-300 ${i === ai ? "w-8 bg-ink" : "w-2 bg-ink/25"}`}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -266,8 +300,80 @@ function TitlePage({ c, lang, dark, stage = "rest", phraseRef }) {
   );
 }
 
+/* ---------- Real cover image, lit like a real hardcover ---------- */
+function ImageCover({ c, title, byline, numeral, open }) {
+  const longest = Math.max(...title.split(/\s+/).map((w) => [...w].length), 1);
+  const fit = Math.max(15, Math.min(23, 132 / (longest * 0.6)));
+  return (
+    <div
+      style={{
+        position: "absolute", inset: 0, ...face, overflow: "hidden", borderRadius: "4px 10px 10px 4px",
+        background: c.color,
+        boxShadow: "inset 0 0 0 1px rgba(255,255,255,.1), inset 0 -18px 30px rgba(0,0,0,.35), 0 12px 28px rgba(0,0,0,.4)",
+      }}
+    >
+      <img
+        src={c.cover}
+        alt=""
+        draggable={false}
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+      />
+      {/* binding grain over the picture */}
+      <div className="absolute inset-0" style={{ backgroundImage: NOISE, mixBlendMode: "multiply", opacity: 0.3 }} />
+      {/* soft light from the top left */}
+      <div
+        className="absolute inset-0"
+        style={{ background: "radial-gradient(circle at 28% 16%, rgba(255,255,255,.22), transparent 55%)" }}
+      />
+      {/* rounded spine + hinge groove, like a real hardcover */}
+      <div
+        className="absolute inset-y-0 left-0"
+        style={{ width: 38, background: "linear-gradient(90deg, rgba(0,0,0,.55) 0, rgba(255,255,255,.18) 26%, rgba(0,0,0,.16) 58%, transparent)" }}
+      />
+      <div className="absolute inset-y-0" style={{ left: 34, width: 3, background: "linear-gradient(90deg, rgba(0,0,0,.45), rgba(255,255,255,.18))" }} />
+      {/* edge wear highlight */}
+      <div className="absolute inset-0 rounded-[inherit]" style={{ boxShadow: "inset 0 0 0 1px rgba(255,255,255,.08), inset -3px 0 6px rgba(0,0,0,.25)" }} />
+
+      {SHOW_TITLE && (
+        <div
+          className="absolute flex flex-col items-center justify-center text-center"
+          style={{ top: 0, bottom: 0, left: 52, right: 17, padding: "0 10px" }}
+        >
+          <h3
+            className="font-serif font-bold"
+            style={{
+              fontSize: fit, lineHeight: 1.15, textWrap: "balance", maxWidth: "100%",
+              backgroundImage: GOLD, WebkitBackgroundClip: "text", backgroundClip: "text",
+              color: "transparent", filter: "drop-shadow(0 1px 1px rgba(0,0,0,.8))",
+            }}
+          >
+            {title}
+          </h3>
+          <p className="mt-4 font-serif text-[9px] uppercase tracking-[0.4em]" style={{ color: "#e8c15a", textShadow: "0 1px 2px rgba(0,0,0,.8)" }}>
+            {byline}
+          </p>
+          <p className="mt-1.5 font-serif text-[11px] tracking-[0.3em]" style={{ color: "#c9972f", textShadow: "0 1px 2px rgba(0,0,0,.8)" }}>
+            {numeral}
+          </p>
+        </div>
+      )}
+
+      {/* foil sheen sweep */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <motion.div
+          className="absolute -bottom-4 -top-4 w-1/3"
+          style={{ left: 0, skewX: -20, background: "linear-gradient(90deg,transparent,rgba(255,243,191,.38),transparent)" }}
+          animate={{ x: open ? "420%" : "-150%" }}
+          transition={{ duration: 1.2, ease: soft }}
+        />
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Premium cover (front) ---------- */
 function CoverFront({ c, title, byline, numeral, open }) {
+  if (c.cover) return <ImageCover c={c} title={title} byline={byline} numeral={numeral} open={open} />;
   const dark = shade(c.color, 45);
   // auto-fit the title so the longest word always stays inside the frame
   const longest = Math.max(...title.split(/\s+/).map((w) => [...w].length), 1);
@@ -402,7 +508,7 @@ function ShelfBook({ c, index, lang, dark, open, anyOpen, opening, anim, hover, 
   return (
     // the WHOLE slot is the click target
     <div
-      className="relative shrink-0"
+            className="relative shrink-0 snap-center"
       style={{ width: SLOT, height: ARCH_H, cursor: "none", zIndex: open ? 5 : 1 }}
       onClick={(e) => {
         e.stopPropagation();
@@ -1009,10 +1115,9 @@ export default function Books() {
     }, OPEN_MS);
   };
 
-  const onBookClick = (id) => {
+    const onBookClick = (id) => {
     if (phase !== "idle") return;
-    if (touch && focusId !== id) { setFocusId(id); return; } // phones: 1st tap opens the book
-    enter(id); // 2nd tap / click enters
+    enter(id); // one tap / click enters
   };
   // hover opens a book; leaving it brings back the plain row of books
   const onOpen = (id) => { if (phase === "idle" && !touch) setFocusId(id); };

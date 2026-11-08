@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useData } from "../context/DataContext";
+import { useSettings } from "../context/SettingsContext";
 import KingCard from "./KingCard";
 
 const S = 1.4; // size of the pull-cord (bigger number = bigger)
@@ -11,16 +12,18 @@ const KY = 9;
 const HX = 23; // where the cord's ring hangs in the eyelet (pivot)
 const HY = 27;
 const K = 48; // swing stiffness, side to side
-const K2 = 52; // swing stiffness, toward / away (slightly different = elliptical swing)
-const D = 0.9; // swing damping (settles in roughly 8 seconds)
-const KE = 150; // spring stiffness of the cord's stretch (pull down and bounce back)
-const DE = 5.5; // stretch damping (lower = bouncier)
+const K2 = 52; // swing stiffness, toward / away
+const D = 0.9; // swing damping
+const KE = 170; // stretch spring stiffness (higher = snaps back harder)
+const DE = 3.2; // stretch damping (LOWER = more bounces, higher = fewer)
 const MAX = 0.8; // biggest swing (radians)
 const MAXB = 0.55;
 const MAX_PULL = 46; // longest the cord can stretch (unscaled px)
-const PULL_TRIGGER = 14; // pull the handle down this far (and let go) to summon the card
+const MIN_E = -16; // how far it can overshoot upward when it bounces back
+const PULL_TRIGGER = 14; // pull this far and let go to switch the theme
 const ROPE_Y0 = 30; // where the rope starts (just under the ring)
 const ROPE_LEN = 80; // resting rope length
+const PEAR_TOP = 116; // top of the wooden handle
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 /* the wooden pear handle (symmetric around x = 23), drawn below the rope */
@@ -29,6 +32,7 @@ const PEAR_D =
 
 export default function Bell() {
   const { features } = useData();
+  const { theme, setTheme } = useSettings();
   const slotRef = useRef(null);
   const pendRef = useRef(null);
   const ropeRef = useRef(null);
@@ -37,7 +41,7 @@ export default function Bell() {
     a: 0, w: 0, b: 0, v: 0, e: 0, u: 0,
     raf: 0, prev: 0,
     lx: null, ly: null, lt: null, kick: null,
-    summonAt: 0, drag: null,
+    drag: null,
   });
   const [pos, setPos] = useState(null);
   const enabled = features.bell !== false;
@@ -61,15 +65,23 @@ export default function Bell() {
     };
   }, [enabled]);
 
-  // physics: a 3D pendulum (two damped springs) + a stretchy cord (a third spring, for pulling)
+  // physics: a 3D pendulum (two damped springs) + an elastic cord (a bouncy spring, like a ball on a rubber band)
   useEffect(() => {
     if (!enabled) return;
     const s = st.current;
     const paint = () => {
       if (pendRef.current)
         pendRef.current.style.transform = `rotateZ(${s.a.toFixed(4)}rad) rotateX(${s.b.toFixed(4)}rad) rotateY(${(s.a * 0.5).toFixed(4)}rad)`;
-      if (ropeRef.current) ropeRef.current.setAttribute("height", (ROPE_LEN + s.e).toFixed(2));
-      if (handleRef.current) handleRef.current.setAttribute("transform", `translate(0 ${s.e.toFixed(2)})`);
+      if (ropeRef.current) ropeRef.current.setAttribute("height", Math.max(10, ROPE_LEN + s.e).toFixed(2));
+      if (handleRef.current) {
+        // the handle moves with the cord and stretches / squashes a little, like rubber
+        const sy = 1 + s.e / 170;
+        const sx = 1 - s.e / 420;
+        handleRef.current.setAttribute(
+          "transform",
+          `translate(0 ${s.e.toFixed(2)}) translate(${HX} ${PEAR_TOP}) scale(${sx.toFixed(4)} ${sy.toFixed(4)}) translate(${-HX} ${-PEAR_TOP})`
+        );
+      }
     };
     const step = (now) => {
       const dt = Math.min(0.032, (now - s.prev) / 1000);
@@ -91,7 +103,7 @@ export default function Bell() {
       if (Math.abs(s.a) > MAX) { s.a = Math.sign(s.a) * MAX; s.w *= -0.4; }
       if (Math.abs(s.b) > MAXB) { s.b = Math.sign(s.b) * MAXB; s.v *= -0.4; }
       if (s.e > MAX_PULL) { s.e = MAX_PULL; s.u *= -0.3; }
-      if (s.e < -6) { s.e = -6; s.u *= -0.3; }
+      if (s.e < MIN_E) { s.e = MIN_E; s.u *= -0.3; }
 
       paint();
       const still =
@@ -130,21 +142,10 @@ export default function Bell() {
     s.kick?.();
   };
 
-  // the King of Spades comes out from the handle
-  const summon = () => {
-    const s = st.current;
-    const t = performance.now();
-    if (t - s.summonAt < 1200 || !pos) return;
-    s.summonAt = t;
-    window.dispatchEvent(
-      new CustomEvent("open-king-card", { detail: { x: pos.left + HX * S, y: pos.top + 132 * S } })
-    );
-  };
-
   const onDown = (e) => {
     const s = st.current;
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-    s.drag = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0, side: e.clientX };
+    s.drag = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 };
     s.w = s.u = s.v = 0;
     s.kick?.();
   };
@@ -156,7 +157,7 @@ export default function Bell() {
       const dx = e.clientX - s.drag.x;
       const dy = e.clientY - s.drag.y;
       s.drag.moved = Math.max(s.drag.moved, Math.hypot(dx, dy));
-      // pulling down stretches the cord (with a rubber-band feel); pushing up barely moves it
+      // pulling down stretches the cord with a rubber-band feel (gets harder the further you pull)
       const down = Math.max(0, dy) / S;
       const stretch = down > 0 ? MAX_PULL * (1 - Math.exp(-down / MAX_PULL)) : (dy / S) * 0.15;
       s.e = clamp(stretch, -4, MAX_PULL);
@@ -168,12 +169,10 @@ export default function Bell() {
     }
 
     // hover: moving the cursor over the cord gives it a gentle push
-    const now = performance.now();
     const dx = e.movementX ?? e.clientX - (s.lx ?? e.clientX);
     const dy = e.movementY ?? e.clientY - (s.ly ?? e.clientY);
     s.lx = e.clientX;
     s.ly = e.clientY;
-    s.lt = now;
     push(clamp(-dx * 0.05, -0.9, 0.9), clamp(dy * 0.04, -0.7, 0.7));
   };
 
@@ -187,17 +186,17 @@ export default function Bell() {
     s.drag = null;
 
     if (tap && !cancelled) {
-      // a tap: the handle bobs down and swings, and the card comes out
+      // a tap: the handle just bobs and swings a little
       if (!reduced()) {
         const r = e.currentTarget.getBoundingClientRect();
         s.w = clamp(s.w + (e.clientX > r.left + r.width / 2 ? 3 : -3), -8, 8);
         s.u = 22;
       }
-      summon();
     } else if (pulled && !cancelled) {
-      // a real pull: let go and it springs back up, and the card comes out
+      // a real pull: let go, it snaps back and bounces, and the theme switches
+      s.u = 0; // starts from rest at the stretched length, so the spring bounces it back
       s.w = clamp(s.w + s.a * -4, -8, 8);
-      summon();
+      setTheme(theme === "dark" ? "light" : "dark");
     }
     s.kick?.();
   };
@@ -218,7 +217,7 @@ export default function Bell() {
       aria-hidden="true"
       style={{
         position: "fixed", left: pos.left, top: pos.top, width: SW * S, height: SH * S,
-        zIndex: 45, // above the page and the navbar (the card backdrop sits just below, the card just above)
+        zIndex: 45,
         pointerEvents: "none", perspective: 900, perspectiveOrigin: `${KX * S}px ${KY * S}px`,
       }}
     >
@@ -245,15 +244,12 @@ export default function Bell() {
               <stop offset="1" stopColor="#6b4709" />
             </radialGradient>
           </defs>
-          {/* round brass plate */}
           <circle cx="23" cy="9" r="8" fill="url(#bf-rose)" stroke="rgba(60,35,0,.55)" strokeWidth=".6" />
           <circle cx="23" cy="9" r="5.8" fill="none" stroke="rgba(255,245,200,.55)" strokeWidth=".5" />
           <circle cx="23" cy="9" r="2.1" fill="#8a5f12" stroke="rgba(40,20,0,.6)" strokeWidth=".4" />
           <path d="M21.6 9 H24.4" stroke="#3b2506" strokeWidth=".6" strokeLinecap="round" />
           <ellipse cx="19.8" cy="5.4" rx="3" ry="1.3" fill="#fff" opacity=".35" />
-          {/* neck */}
           <rect x="21.7" y="16.4" width="2.6" height="3.8" fill="url(#bf-gold)" stroke="rgba(60,35,0,.5)" strokeWidth=".35" />
-          {/* closed ring (eyelet) the cord hangs from */}
           <circle cx="23" cy="23.4" r="4.4" fill="none" stroke="rgba(0,0,0,.32)" strokeWidth="2.6" />
           <circle cx="23" cy="23.4" r="4.4" fill="none" stroke="url(#bf-gold)" strokeWidth="1.7" />
         </svg>
@@ -275,7 +271,6 @@ export default function Bell() {
                 <stop offset=".72" stopColor="#d9a933" />
                 <stop offset="1" stopColor="#7a520f" />
               </linearGradient>
-              {/* braided rope: twisted diagonal strands */}
               <pattern id="rp-braid" width="2.8" height="2.4" patternUnits="userSpaceOnUse">
                 <rect width="2.8" height="2.4" fill="#d6c8a6" />
                 <path d="M0 2.4 L2.8 0" stroke="#8d7a52" strokeWidth=".7" />
@@ -307,11 +302,9 @@ export default function Bell() {
 
             {/* braided rope: its height changes while you pull (set by the physics loop) */}
             <rect ref={ropeRef} x={HX - 1.4} y={ROPE_Y0 + 4} width="2.8" height={ROPE_LEN} fill="url(#rp-braid)" />
-            <rect x={HX - 1.4} y={ROPE_Y0 + 4} width="2.8" height="400" fill="none" />
 
-            {/* handle group: slides down when the cord stretches */}
+            {/* handle group: slides down and stretches when the cord is pulled */}
             <g ref={handleRef}>
-              {/* rope shading, drawn only over the visible rope length via the handle offset */}
               {/* brass ferrule */}
               <rect x="20.4" y={ROPE_Y0 + 4 + ROPE_LEN - 1} width="5.2" height="5.6" rx=".9" fill="url(#bl-gold)" stroke="rgba(60,35,0,.55)" strokeWidth=".4" />
               <rect x="20.9" y={ROPE_Y0 + 4 + ROPE_LEN + 1.4} width="4.2" height=".7" fill="rgba(60,35,0,.35)" />
@@ -320,12 +313,10 @@ export default function Bell() {
               {/* wooden pear handle */}
               <path d={PEAR_D} fill="url(#bl-wood-h)" />
               <g clipPath="url(#bl-pear-clip)">
-                {/* wood grain */}
                 <path d="M19.6 116 C18 124 18.4 131 20.2 137" stroke="rgba(60,30,8,.45)" strokeWidth=".45" fill="none" />
                 <path d="M21.6 116 C20.6 124 20.8 131 21.8 137" stroke="rgba(60,30,8,.4)" strokeWidth=".4" fill="none" />
                 <path d="M24.4 116 C25.4 124 25.2 131 24.2 137" stroke="rgba(60,30,8,.4)" strokeWidth=".4" fill="none" />
                 <path d="M26.6 116 C28 124 27.6 131 25.8 137" stroke="rgba(60,30,8,.45)" strokeWidth=".45" fill="none" />
-                {/* soft light on the left, shadow under the belly */}
                 <ellipse cx="19.8" cy="126" rx="1.4" ry="5" fill="#fff" opacity=".28" />
                 <rect x="14" y="132" width="18" height="6" fill="rgba(30,12,0,.25)" />
               </g>
@@ -333,12 +324,7 @@ export default function Bell() {
             </g>
           </svg>
 
-          {/* round shading over the visible rope (kept short; the stretching rope reads fine without it) */}
-          <svg width={SW} height={SH} viewBox={`0 0 ${SW} ${SH}`} style={{ position: "absolute", left: 0, top: 0, overflow: "visible", pointerEvents: "none" }}>
-            <rect x={HX - 1.4} y={ROPE_Y0 + 4} width="2.8" height={ROPE_LEN} fill="url(#rp-round)" />
-          </svg>
-
-          {/* touch area for the rope and handle (swings with it). Tall enough to follow a stretched cord. */}
+          {/* touch area for the rope and handle (swings with it) */}
           <div
             onPointerMove={onMove}
             onPointerLeave={onLeave}
@@ -360,7 +346,7 @@ export default function Bell() {
       {/* keeps the space in the navbar; the cord itself lives in its own top layer */}
       <div ref={slotRef} className="ml-2 h-7 w-[34px] shrink-0" aria-hidden="true" />
       {cord && createPortal(cord, document.body)}
-      {/* the King of Spades overlay (listens for the cord) */}
+      {/* the King of Spades overlay (opened by the card icon in the navbar) */}
       <KingCard />
     </>
   );

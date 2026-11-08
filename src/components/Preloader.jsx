@@ -4,58 +4,109 @@ import { useSettings } from "../context/SettingsContext";
 import { useData } from "../context/DataContext";
 import { tx } from "../lib/i18n";
 
+// one colour per pill (background, text). Add or change as you like.
+const PALETTE = [
+  { bg: "linear-gradient(180deg,#26221f,#171513)", fg: "#d9d3ca" }, // charcoal
+  { bg: "linear-gradient(180deg,#27406a,#1b2d4a)", fg: "#d4dcea" }, // blue
+  { bg: "linear-gradient(180deg,#5a4352,#41303b)", fg: "#e6dbe0" }, // plum
+  { bg: "linear-gradient(180deg,#8fa086,#74866c)", fg: "#f1f4ec" }, // sage
+  { bg: "linear-gradient(180deg,#c2622f,#9c4a22)", fg: "#fbeadd" }, // orange
+  { bg: "linear-gradient(180deg,#d3c1c1,#b9a2a2)", fg: "#3b2f2f" }, // rose
+];
+const FALLBACK = ["Prabhat Dubey", "Web Development", "App Development", "UI/UX Design", "Beyond the Code"];
+const STEP = 84; // how far each pill sits below the one before
+const PILL_H = 140;
+const KEY = "pre_labels_";
+
 export default function Preloader() {
   const { lang } = useSettings();
-  const { profile, categories, features } = useData();
-  const [show, setShow] = useState(features.preloader !== false);
-  const [n, setN] = useState(2);
+  const { profile, categories, features, progress } = useData();
+  const [show, setShow] = useState(true);
+  const [n, setN] = useState(0);
 
-  const labels = [tx(profile.name, lang), ...categories.map((c) => tx(c.name, lang))];
-  const visible = Math.min(labels.length, Math.floor((n / 100) * (labels.length + 1)));
+  // names: from the database when it has loaded, else the ones saved last visit, else defaults
+  const live = profile && categories ? [tx(profile.name, lang), ...categories.map((c) => tx(c.name, lang))] : null;
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(KEY + lang)); } catch { /* ignore */ }
+  const labels = live || (Array.isArray(cached) && cached.length ? cached : FALLBACK);
+  const liveKey = live ? live.join("|") : "";
+  useEffect(() => {
+    if (!live) return;
+    try { localStorage.setItem(KEY + lang, JSON.stringify(live)); } catch { /* ignore */ }
+  }, [liveKey, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // the number glides toward the REAL loading progress
   useEffect(() => {
     if (!show) return;
-    const id = setInterval(() => setN((v) => Math.min(v + 1, 100)), 28);
+    const id = setInterval(() => {
+      setN((v) => {
+        if (v >= progress) return v;
+        return Math.min(progress, v + Math.max(1, Math.ceil((progress - v) / 8)));
+      });
+    }, 24);
     return () => clearInterval(id);
-  }, [show]);
+  }, [show, progress]);
 
+  // 100 reached: wait a moment, then slide away
   useEffect(() => {
     if (n < 100) return;
-    const id = setTimeout(() => setShow(false), 600);
+    const id = setTimeout(() => setShow(false), 500);
     return () => clearTimeout(id);
   }, [n]);
+
+  // preloader switched off in the database
+  useEffect(() => {
+    if (features && features.preloader === false) setShow(false);
+  }, [features]);
 
   useEffect(() => {
     document.body.style.overflow = show ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [show]);
 
+  const visible = Math.max(1, Math.ceil((n / 100) * labels.length));
+  const stackH = (labels.length - 1) * STEP + PILL_H;
+
   return (
     <AnimatePresence>
       {show && (
         <motion.div
           key="preloader"
-          className="fixed inset-0 z-[70] bg-zinc-950 text-white"
+          className="fixed inset-0 z-[70] overflow-hidden bg-[#0a0908] text-white"
           exit={{ y: "-100%" }}
           transition={{ duration: 0.9, ease: [0.76, 0, 0.24, 1] }}
         >
-          <div className="absolute left-8 top-8 text-sm tracking-widest opacity-60">{labels[0]}</div>
+          {/* soft warm glow */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(ellipse at 15% 70%, rgba(120,70,30,.28), transparent 55%), radial-gradient(ellipse at 85% 20%, rgba(60,50,45,.35), transparent 50%)",
+            }}
+          />
 
-          {/* stacked cards */}
-          <div className="absolute left-1/2 top-1/2 h-72 w-[min(80vw,360px)] -translate-x-1/2 -translate-y-1/2">
+          {/* stacked coloured pills */}
+          <div
+            className="absolute left-1/2 top-[44%] w-[min(78vw,520px)] -translate-x-1/2 -translate-y-1/2"
+            style={{ height: stackH }}
+          >
             {labels.map((label, k) => {
+              const p = PALETTE[k % PALETTE.length];
               const shown = k < visible;
-              const isTop = k === visible - 1;
               return (
                 <motion.div
                   key={k}
-                  initial={{ opacity: 0, y: 60 }}
-                  animate={{ opacity: shown ? 1 : 0, y: shown ? k * 46 : 60, scale: shown ? 1 - (visible - 1 - k) * 0.03 : 0.95 }}
-                  transition={{ type: "spring", stiffness: 140, damping: 18 }}
-                  style={{ zIndex: k }}
-                  className={`absolute inset-x-0 top-0 rounded-2xl border px-6 py-4 text-sm font-semibold ${
-                    isTop ? "border-white bg-white text-black" : "border-white/10 bg-zinc-800 text-white/80"
-                  }`}
+                  initial={{ opacity: 0, y: k * STEP + 70 }}
+                  animate={{ opacity: shown ? 1 : 0, y: shown ? k * STEP : k * STEP + 70 }}
+                  transition={{ type: "spring", stiffness: 140, damping: 20 }}
+                  style={{
+                    zIndex: k,
+                    height: PILL_H,
+                    background: p.bg,
+                    color: p.fg,
+                    boxShadow: "0 -6px 18px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.12)",
+                  }}
+                  className="absolute inset-x-0 top-0 rounded-full px-10 pt-[18px] text-[17px] font-medium"
                 >
                   {label}
                 </motion.div>
@@ -63,9 +114,19 @@ export default function Preloader() {
             })}
           </div>
 
-          <p className="absolute bottom-6 right-8 text-8xl font-bold tabular-nums md:text-9xl">
-            {String(n).padStart(3, "0")}
-          </p>
+          {/* bottom: caption + real counter + progress line */}
+          <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-6 px-6 pb-10 md:px-10">
+            <div>
+              <p className="font-mono text-xs uppercase tracking-[0.35em] opacity-60">Opening up the work</p>
+              <p className="mt-2 text-7xl font-bold leading-none tabular-nums md:text-9xl">{n}</p>
+            </div>
+            <div className="mb-3 h-px w-32 bg-white/15 md:w-72">
+              <div
+                className="h-[2px] -translate-y-[0.5px]"
+                style={{ width: `${n}%`, background: "linear-gradient(90deg,#8a6a2a,#f3d36b)" }}
+              />
+            </div>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

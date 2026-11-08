@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useSettings } from "../context/SettingsContext";
 import { useData } from "../context/DataContext";
@@ -69,13 +69,14 @@ function useOpenBook() {
 const openBookEvent = (id) => window.dispatchEvent(new CustomEvent("open-book", { detail: id }));
 
 export default function Navbar() {
-  const { lang, setLang, theme, setTheme } = useSettings();
+  const { lang, setLang } = useSettings();
   const { categories, features, t } = useData();
   const [menu, setMenu] = useState(false);
   const showClock = features.liveClock !== false;
   const { time, date } = useClock(lang, showClock);
   const section = useActiveSection();
   const [openBook, setOpenBook] = useOpenBook();
+  const cardRef = useRef(null);
 
   const btn =
     "rounded-full border border-current/20 px-2.5 py-0.5 text-xs transition hover:bg-ink/10";
@@ -99,9 +100,23 @@ export default function Navbar() {
     setMenu(false);
   };
 
+  // the card icon brings out the King card from the icon itself
+  const summonCard = () => {
+    const r = cardRef.current?.getBoundingClientRect();
+    if (!r) return;
+    window.dispatchEvent(
+      new CustomEvent("open-king-card", { detail: { x: r.left + r.width / 2, y: r.bottom } })
+    );
+  };
+
   return (
     <header className="fixed top-0 z-30 w-full border-b border-line bg-nav backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-6">
+      <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:gap-4 sm:px-6">
+        {/* menu button: on the LEFT on phones and tablets */}
+        <button onClick={() => setMenu((m) => !m)} className={`${btn} shrink-0 xl:hidden`} aria-label="Menu">
+          {menu ? "✕" : "☰"}
+        </button>
+
         <nav className="hidden items-center gap-5 xl:flex">
           {items.map((it) => {
             const active = it.key === activeKey;
@@ -127,30 +142,39 @@ export default function Navbar() {
           })}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2">
-          {showClock && (
-            <div className="mr-1 hidden items-center gap-1.5 whitespace-nowrap rounded-full border border-current/20 px-3 py-1 text-[11px] xl:flex">
-              <span className="opacity-60">{t("local_time")}</span>
-              <b className="font-semibold">{time}</b>
-              <span className="opacity-40">•</span>
-              <span className="opacity-70">{date}</span>
-            </div>
-          )}
+        {/* local time: small on phones, with the date only on wide screens */}
+        {showClock && (
+          <div className="flex min-w-0 items-center gap-1 whitespace-nowrap rounded-full border border-current/20 px-2 py-0.5 text-[10px] sm:px-3 sm:py-1 sm:text-[11px] xl:mr-1 xl:gap-1.5 xl:ml-auto">
+            <span className="opacity-60">{t("local_time")}</span>
+            <b className="font-semibold">{time}</b>
+            <span className="hidden opacity-40 xl:inline">•</span>
+            <span className="hidden opacity-70 xl:inline">{date}</span>
+          </div>
+        )}
+
+        <div className={`ml-auto flex items-center gap-1.5 sm:gap-2 ${showClock ? "xl:ml-0" : "xl:ml-auto"}`}>
           <button onClick={() => setLang(lang === "en" ? "hi" : "en")} className={btn}>
             {lang === "en" ? "हिं" : "EN"}
           </button>
-          <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className={btn}>
-            {theme === "dark" ? "☀️" : "🌙"}
+
+          {/* little card icon: tap it and the King card comes out */}
+          <button
+            ref={cardRef}
+            onClick={summonCard}
+            className={`${btn} grid place-items-center !px-2`}
+            aria-label="Open card"
+            title="Open card"
+          >
+            <svg width="14" height="16" viewBox="0 0 24 28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="2" width="18" height="24" rx="3" />
+              <path d="M12 8.5c-2.2 2.4-4.5 3.8-4.5 6 0 1.4 1.1 2.3 2.3 2.3 1 0 1.8-.5 2.2-1.3.4.8 1.2 1.3 2.2 1.3 1.2 0 2.3-.9 2.3-2.3 0-2.2-2.3-3.6-4.5-6z" fill="currentColor" stroke="none" />
+            </svg>
           </button>
 
-          {/* bell: pushed 32px to the right on wide screens (change xl:translate-x-8 to move it more or less) */}
+          {/* bell: pull it to switch light / dark. Pushed to the right on wide screens (change xl:translate-x-8 to move it) */}
           <div className="shrink-0 xl:translate-x-8">
             <Bell />
           </div>
-
-          <button onClick={() => setMenu((m) => !m)} className={`${btn} xl:hidden`} aria-label="Menu">
-            {menu ? "✕" : "☰"}
-          </button>
         </div>
       </div>
 
