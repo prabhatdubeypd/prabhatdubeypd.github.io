@@ -3,183 +3,46 @@ import { createPortal } from "react-dom";
 import { useData } from "../context/DataContext";
 import KingCard from "./KingCard";
 
-const S = 1.4; // size of the bell (bigger number = bigger bell)
+const S = 1.4; // size of the pull-cord (bigger number = bigger)
 const SW = 46; // scene width and height (in unscaled px)
 const SH = 138;
 const KX = 23; // centre of the brass plate (placed on the navbar slot)
 const KY = 9;
-const HX = 23; // where the bell's ring hangs in the eyelet (pivot)
+const HX = 23; // where the cord's ring hangs in the eyelet (pivot)
 const HY = 27;
-const K = 48; // spring stiffness, side to side
-const K2 = 52; // spring stiffness, toward / away (slightly different = elliptical swing)
-const D = 0.9; // damping (settles in roughly 8 seconds)
+const K = 48; // swing stiffness, side to side
+const K2 = 52; // swing stiffness, toward / away (slightly different = elliptical swing)
+const D = 0.9; // swing damping (settles in roughly 8 seconds)
+const KE = 150; // spring stiffness of the cord's stretch (pull down and bounce back)
+const DE = 5.5; // stretch damping (lower = bouncier)
 const MAX = 0.8; // biggest swing (radians)
 const MAXB = 0.55;
-const SPEED_FULL = 1.6; // cursor speed (px per ms) that counts as a "full speed" flick
-const FORCE_SOUND = true; // true = bell always has sound (ignores bellSound = false in your data)
-const VOLUME = 0.05; // MASTER VOLUME of the bell: 0.05 = very quiet, 0.1 = soft, 0.2 = medium, 1 = loud
-const SAME_PITCH = false; // true = the bell always rings the same note, false = pitch follows your speed
+const MAX_PULL = 46; // longest the cord can stretch (unscaled px)
+const PULL_TRIGGER = 14; // pull the handle down this far (and let go) to summon the card
+const ROPE_Y0 = 30; // where the rope starts (just under the ring)
+const ROPE_LEN = 80; // resting rope length
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
-/* ---------- soft, sweet chime made in code ---------- */
-let audio = null;
-let bus = null;
-let current = null; // the ring that is sounding right now (only one at a time)
-
-// notes of a C major pentatonic scale: every ring is in tune, like a wind chime
-const NOTES = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5, 1174.66, 1318.51];
-
-function getAudio() {
-  try {
-    if (!audio) {
-      audio = new (window.AudioContext || window.webkitAudioContext)();
-      // everything goes through: soft low-pass -> gentle compressor -> master volume
-      const lp = audio.createBiquadFilter();
-      lp.type = "lowpass";
-      lp.frequency.value = 3800;
-      lp.Q.value = 0.4;
-      const comp = audio.createDynamicsCompressor();
-      comp.threshold.value = -14;
-      comp.ratio.value = 3;
-      const out = audio.createGain();
-      out.gain.value = VOLUME;
-      lp.connect(comp);
-      comp.connect(out);
-      out.connect(audio.destination);
-
-      // light, warm reverb for a smooth tail
-      const len = Math.floor(audio.sampleRate * 1.8);
-      const ir = audio.createBuffer(2, len, audio.sampleRate);
-      for (let c = 0; c < 2; c++) {
-        const d = ir.getChannelData(c);
-        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6);
-      }
-      const conv = audio.createConvolver();
-      conv.buffer = ir;
-      const damp = audio.createBiquadFilter();
-      damp.type = "lowpass";
-      damp.frequency.value = 2600;
-      const wet = audio.createGain();
-      wet.gain.value = 0.3;
-      lp.connect(conv);
-      conv.connect(damp);
-      damp.connect(wet);
-      wet.connect(comp);
-
-      bus = lp;
-    }
-    return audio;
-  } catch {
-    return null;
-  }
-}
-
-// browsers only allow sound after the first click / tap / key press on the page
-function unlockAudio() {
-  const a = getAudio();
-  if (a && a.state !== "running") a.resume().catch(() => {});
-}
-
-/* one soft strike. strength 0..1: a gentle touch = low, quiet note; a fast flick = higher, fuller note.
-   Only ONE ring sounds at a time: a new ring smoothly fades the previous one out. */
-function ring(strength, retried = false) {
-  const a = getAudio();
-  if (!a) return;
-  if (a.state !== "running") {
-    // audio still locked: unlock it, then play this ring once
-    if (!retried)
-      a.resume()
-        .then(() => { if (a.state === "running") ring(strength, true); })
-        .catch(() => {});
-    return;
-  }
-  const v = clamp(strength, 0, 1);
-  const t0 = a.currentTime;
-
-  // fade the previous ring out quickly and smoothly, so two sounds never overlap
-  if (current) {
-    try {
-      current.gain.cancelScheduledValues(t0);
-      current.gain.setValueAtTime(Math.max(current.gain.value, 0.0001), t0);
-      current.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.16);
-    } catch {
-      /* already finished */
-    }
-  }
-
-  const f0 = SAME_PITCH ? NOTES[3] : NOTES[clamp(Math.round(v * 5), 0, NOTES.length - 1)]; // faster = higher note
-  const peak = 0.16 + 0.3 * Math.pow(v, 1.2); // level before the master volume
-  const dur = 1.3 + 1.5 * v; // how long it rings
-
-  // smooth fade-in (no click), then a long natural fade-out
-  const master = a.createGain();
-  master.gain.setValueAtTime(0.0001, t0);
-  master.gain.exponentialRampToValueAtTime(peak, t0 + 0.014);
-  master.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  master.connect(bus);
-  current = master;
-
-  // warm tone: strong base note, a slightly detuned twin (gentle shimmer), soft overtones
-  const partials = [
-    [1, 1, 1],
-    [1.004, 0.55, 1],
-    [2, 0.28, 0.55],
-    [3, 0.1, 0.35],
-    [4.01, 0.04, 0.2],
-  ];
-  partials.forEach(([m, g, life]) => {
-    const o = a.createOscillator();
-    const gg = a.createGain();
-    o.type = "sine";
-    o.frequency.value = f0 * m;
-    gg.gain.setValueAtTime(g, t0);
-    gg.gain.exponentialRampToValueAtTime(0.0001, t0 + dur * life);
-    o.connect(gg);
-    gg.connect(master);
-    o.start(t0);
-    o.stop(t0 + dur * life + 0.05);
-  });
-}
-
-// outline of the bell (symmetric around x = 23)
-const BELL_D =
-  "M20.8 98.4 C20 103 18.2 108 15.4 113 C13.5 116.5 11.6 120 10.5 124.5 Q10.2 126.2 12 126.6 Q23 129.6 34 126.6 Q35.8 126.2 35.5 124.5 C34.4 120 32.5 116.5 30.6 113 C27.8 108 26 103 25.2 98.4 Z";
-const RIM_D =
-  "M10.4 123.7 Q23 126.8 35.6 123.7 L35.5 124.5 Q35.8 126.2 34 126.6 Q23 129.6 12 126.6 Q10.2 126.2 10.5 124.5 Z";
-
-/* a shaded 3D ball with a little highlight */
-function Sphere({ cx, cy, r, fill }) {
-  return (
-    <g>
-      <circle cx={cx} cy={cy} r={r} fill={`url(#${fill})`} stroke="rgba(70,40,0,.5)" strokeWidth=".45" />
-      <ellipse cx={cx - r * 0.32} cy={cy - r * 0.42} rx={r * 0.34} ry={r * 0.2} fill="#fff" opacity=".7" />
-    </g>
-  );
-}
+/* the wooden pear handle (symmetric around x = 23), drawn below the rope */
+const PEAR_D =
+  "M21.3 116 C21.3 120 16.2 122.6 16.2 128.6 C16.2 133.8 19.3 137.4 23 137.4 C26.7 137.4 29.8 133.8 29.8 128.6 C29.8 122.6 24.7 120 24.7 116 Z";
 
 export default function Bell() {
   const { features } = useData();
   const slotRef = useRef(null);
   const pendRef = useRef(null);
+  const ropeRef = useRef(null);
+  const handleRef = useRef(null);
   const st = useRef({
-    a: 0, w: 0, b: 0, v: 0, raf: 0, prev: 0, ringAt: 0,
-    lx: null, ly: null, lt: null, kick: null, sound: true,
-    summonAt: 0, hits: [],
+    a: 0, w: 0, b: 0, v: 0, e: 0, u: 0,
+    raf: 0, prev: 0,
+    lx: null, ly: null, lt: null, kick: null,
+    summonAt: 0, drag: null,
   });
   const [pos, setPos] = useState(null);
   const enabled = features.bell !== false;
-  const sound = FORCE_SOUND || features.bellSound !== false;
-  st.current.sound = sound;
 
-  // unlock the sound on the first click / tap / key press anywhere on the page
-  useEffect(() => {
-    if (!enabled) return;
-    const events = ["pointerdown", "pointerup", "keydown", "touchstart", "click"];
-    events.forEach((e) => window.addEventListener(e, unlockAudio, { passive: true }));
-    return () => events.forEach((e) => window.removeEventListener(e, unlockAudio));
-  }, [enabled]);
-
-  // find where the slot is in the navbar, and hang the bell exactly there
+  // find where the slot is in the navbar, and hang the cord exactly there
   useLayoutEffect(() => {
     if (!enabled) return;
     const calc = () => {
@@ -198,39 +61,45 @@ export default function Bell() {
     };
   }, [enabled]);
 
-  // rate limit: a hard hit can repeat quickly, a soft one cannot. Returns true if it rang.
-  const tryRing = (strength, minGap) => {
-    const s = st.current;
-    const t = performance.now();
-    if (t - s.ringAt < minGap) return false;
-    s.ringAt = t;
-    if (s.sound) ring(strength);
-    return true;
-  };
-
-  // 3D pendulum physics: two damped springs (side to side + toward / away). Motion only, no extra sound.
+  // physics: a 3D pendulum (two damped springs) + a stretchy cord (a third spring, for pulling)
   useEffect(() => {
     if (!enabled) return;
     const s = st.current;
     const paint = () => {
       if (pendRef.current)
         pendRef.current.style.transform = `rotateZ(${s.a.toFixed(4)}rad) rotateX(${s.b.toFixed(4)}rad) rotateY(${(s.a * 0.5).toFixed(4)}rad)`;
+      if (ropeRef.current) ropeRef.current.setAttribute("height", (ROPE_LEN + s.e).toFixed(2));
+      if (handleRef.current) handleRef.current.setAttribute("transform", `translate(0 ${s.e.toFixed(2)})`);
     };
     const step = (now) => {
       const dt = Math.min(0.032, (now - s.prev) / 1000);
       s.prev = now;
+
+      if (s.drag) {
+        // finger / cursor is holding the handle: it controls the angle and the stretch directly
+        paint();
+        s.raf = requestAnimationFrame(step);
+        return;
+      }
+
       s.w += (-K * s.a - D * s.w) * dt;
       s.a += s.w * dt;
       s.v += (-K2 * s.b - D * s.v) * dt;
       s.b += s.v * dt;
+      s.u += (-KE * s.e - DE * s.u) * dt;
+      s.e += s.u * dt;
       if (Math.abs(s.a) > MAX) { s.a = Math.sign(s.a) * MAX; s.w *= -0.4; }
       if (Math.abs(s.b) > MAXB) { s.b = Math.sign(s.b) * MAXB; s.v *= -0.4; }
+      if (s.e > MAX_PULL) { s.e = MAX_PULL; s.u *= -0.3; }
+      if (s.e < -6) { s.e = -6; s.u *= -0.3; }
 
       paint();
       const still =
-        Math.abs(s.a) < 0.0005 && Math.abs(s.w) < 0.005 && Math.abs(s.b) < 0.0005 && Math.abs(s.v) < 0.005;
+        Math.abs(s.a) < 0.0005 && Math.abs(s.w) < 0.005 &&
+        Math.abs(s.b) < 0.0005 && Math.abs(s.v) < 0.005 &&
+        Math.abs(s.e) < 0.02 && Math.abs(s.u) < 0.05;
       if (still) {
-        s.a = s.w = s.b = s.v = 0;
+        s.a = s.w = s.b = s.v = s.e = s.u = 0;
         paint();
         s.raf = 0;
         return;
@@ -251,73 +120,100 @@ export default function Bell() {
 
   if (!enabled) return null;
 
+  const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
   const push = (dw, dv = 0) => {
     const s = st.current;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (reduced()) return;
     s.w = clamp(s.w + dw, -8, 8);
     s.v = clamp(s.v + dv + dw * 0.25, -8, 8); // a sideways push also gives a little forward motion
     s.kick?.();
   };
 
-  // the King of Spades comes out of the mouth of the bell
+  // the King of Spades comes out from the handle
   const summon = () => {
     const s = st.current;
     const t = performance.now();
     if (t - s.summonAt < 1200 || !pos) return;
     s.summonAt = t;
     window.dispatchEvent(
-      new CustomEvent("open-king-card", { detail: { x: pos.left + HX * S, y: pos.top + 126 * S } })
+      new CustomEvent("open-king-card", { detail: { x: pos.left + HX * S, y: pos.top + 132 * S } })
     );
+  };
+
+  const onDown = (e) => {
+    const s = st.current;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    s.drag = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0, side: e.clientX };
+    s.w = s.u = s.v = 0;
+    s.kick?.();
   };
 
   const onMove = (e) => {
     const s = st.current;
+
+    if (s.drag) {
+      const dx = e.clientX - s.drag.x;
+      const dy = e.clientY - s.drag.y;
+      s.drag.moved = Math.max(s.drag.moved, Math.hypot(dx, dy));
+      // pulling down stretches the cord (with a rubber-band feel); pushing up barely moves it
+      const down = Math.max(0, dy) / S;
+      const stretch = down > 0 ? MAX_PULL * (1 - Math.exp(-down / MAX_PULL)) : (dy / S) * 0.15;
+      s.e = clamp(stretch, -4, MAX_PULL);
+      // dragging sideways swings the whole cord
+      s.a = clamp(-dx / (S * 90), -MAX, MAX);
+      s.b = clamp(-(dy > 0 ? 0 : dy) / (S * 400), -MAXB, MAXB);
+      s.kick?.();
+      return;
+    }
+
+    // hover: moving the cursor over the cord gives it a gentle push
     const now = performance.now();
     const dx = e.movementX ?? e.clientX - (s.lx ?? e.clientX);
     const dy = e.movementY ?? e.clientY - (s.ly ?? e.clientY);
-    const dt = Math.max(4, now - (s.lt ?? now - 16));
     s.lx = e.clientX;
     s.ly = e.clientY;
     s.lt = now;
-
-    // moving right pushes the bell right; moving up / down pushes it back / forward
     push(clamp(-dx * 0.05, -0.9, 0.9), clamp(dy * 0.04, -0.7, 0.7));
-
-    // sound follows the speed of your cursor over the bell
-    const speed = Math.hypot(dx, dy) / dt; // px per ms
-    if (speed > 0.06) {
-      const v = clamp(speed / SPEED_FULL, 0, 1);
-      // faster = higher note and fuller sound, and the rings come a little quicker
-      const rang = tryRing(0.3 + 0.7 * v, 230 - 130 * v);
-      // wave it hard: 5 strong rings within about a second brings out the card
-      if (rang && v >= 0.6) {
-        s.hits = s.hits.filter((h) => now - h < 1100);
-        s.hits.push(now);
-        if (s.hits.length >= 5) {
-          s.hits = [];
-          summon();
-        }
-      }
-    }
   };
+
+  const finish = (e, cancelled) => {
+    const s = st.current;
+    const d = s.drag;
+    if (!d) return;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    const pulled = s.e >= PULL_TRIGGER;
+    const tap = d.moved < 6 && performance.now() - d.t < 600;
+    s.drag = null;
+
+    if (tap && !cancelled) {
+      // a tap: the handle bobs down and swings, and the card comes out
+      if (!reduced()) {
+        const r = e.currentTarget.getBoundingClientRect();
+        s.w = clamp(s.w + (e.clientX > r.left + r.width / 2 ? 3 : -3), -8, 8);
+        s.u = 22;
+      }
+      summon();
+    } else if (pulled && !cancelled) {
+      // a real pull: let go and it springs back up, and the card comes out
+      s.w = clamp(s.w + s.a * -4, -8, 8);
+      summon();
+    }
+    s.kick?.();
+  };
+
   const onLeave = () => {
     const s = st.current;
+    if (s.drag) return; // pointer capture keeps the drag alive
     s.lx = null;
     s.ly = null;
     s.lt = null;
-  };
-  const onDown = (e) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    push(e.clientX > r.left + r.width / 2 ? 3 : -3); // a tap pushes it away from your finger
-    unlockAudio();
-    tryRing(1, 0); // a tap is the fullest ring
-    summon(); // ...and it brings out the card
   };
 
   const soft = { filter: "drop-shadow(0 4px 3px rgba(0,0,0,.28))" };
   const svgBase = { position: "absolute", left: 0, top: 0, overflow: "visible", ...soft };
 
-  const bell = pos && (
+  const cord = pos && (
     <div
       aria-hidden="true"
       style={{
@@ -357,12 +253,12 @@ export default function Bell() {
           <ellipse cx="19.8" cy="5.4" rx="3" ry="1.3" fill="#fff" opacity=".35" />
           {/* neck */}
           <rect x="21.7" y="16.4" width="2.6" height="3.8" fill="url(#bf-gold)" stroke="rgba(60,35,0,.5)" strokeWidth=".35" />
-          {/* closed ring (eyelet) the bell hangs from */}
+          {/* closed ring (eyelet) the cord hangs from */}
           <circle cx="23" cy="23.4" r="4.4" fill="none" stroke="rgba(0,0,0,.32)" strokeWidth="2.6" />
           <circle cx="23" cy="23.4" r="4.4" fill="none" stroke="url(#bf-gold)" strokeWidth="1.7" />
         </svg>
 
-        {/* ---- swinging: ring, beads, cord, bell (pivots in the eyelet) ---- */}
+        {/* ---- swinging: ring, braided rope, ferrule, wooden handle (pivots in the eyelet) ---- */}
         <div
           ref={pendRef}
           style={{
@@ -379,67 +275,29 @@ export default function Bell() {
                 <stop offset=".72" stopColor="#d9a933" />
                 <stop offset="1" stopColor="#7a520f" />
               </linearGradient>
-              <linearGradient id="bl-cord" x1="0" x2="1" y1="0" y2="0">
-                <stop offset="0" stopColor="#8f620a" />
-                <stop offset=".5" stopColor="#ffd75a" />
-                <stop offset="1" stopColor="#8f620a" />
-              </linearGradient>
-              <radialGradient id="bl-goldball" cx=".35" cy=".3" r=".78">
-                <stop offset="0" stopColor="#fff6c8" />
-                <stop offset=".35" stopColor="#f0c94e" />
-                <stop offset=".75" stopColor="#b8862b" />
-                <stop offset="1" stopColor="#6e4a0c" />
-              </radialGradient>
-              <radialGradient id="bl-yel" cx=".35" cy=".3" r=".78">
-                <stop offset="0" stopColor="#fffbe0" />
-                <stop offset=".35" stopColor="#ffd84a" />
-                <stop offset=".75" stopColor="#e0a512" />
-                <stop offset="1" stopColor="#8d5f05" />
-              </radialGradient>
-              <radialGradient id="bl-wood" cx=".35" cy=".3" r=".78">
-                <stop offset="0" stopColor="#f5cf9c" />
-                <stop offset=".4" stopColor="#d79a5a" />
-                <stop offset=".8" stopColor="#9a5f2a" />
-                <stop offset="1" stopColor="#5a3414" />
-              </radialGradient>
-              <linearGradient id="bl-ceramic" x1="0" x2="1" y1="0" y2="0">
-                <stop offset="0" stopColor="#b9c7d1" />
-                <stop offset=".25" stopColor="#eef3f6" />
-                <stop offset=".45" stopColor="#ffffff" />
-                <stop offset=".7" stopColor="#e1e9ee" />
-                <stop offset="1" stopColor="#a7b6c1" />
-              </linearGradient>
-              <linearGradient id="bl-blue" x1="0" x2="1" y1="0" y2="0">
-                <stop offset="0" stopColor="#123760" />
-                <stop offset=".45" stopColor="#4d8fd6" />
-                <stop offset="1" stopColor="#123760" />
-              </linearGradient>
-              {/* round look: dark edges, bright stripe left of centre */}
-              <linearGradient id="bl-round" x1="0" x2="1" y1="0" y2="0">
-                <stop offset="0" stopColor="rgba(10,30,60,.40)" />
-                <stop offset=".22" stopColor="rgba(10,30,60,.08)" />
-                <stop offset=".4" stopColor="rgba(255,255,255,.55)" />
-                <stop offset=".52" stopColor="rgba(255,255,255,0)" />
-                <stop offset=".76" stopColor="rgba(10,30,60,.12)" />
-                <stop offset="1" stopColor="rgba(10,30,60,.46)" />
-              </linearGradient>
-              <linearGradient id="bl-depth" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0" stopColor="rgba(255,255,255,.18)" />
-                <stop offset="1" stopColor="rgba(40,70,100,.2)" />
-              </linearGradient>
-              <pattern id="bl-floral" width="7" height="8" patternUnits="userSpaceOnUse" x="9">
-                <circle cx="3.5" cy="4" r="1.15" fill="#e8b923" />
-                <circle cx="3.5" cy="4" r=".45" fill="#b3560c" />
-                <ellipse cx="1.4" cy="4.6" rx="1.2" ry=".55" fill="#4f8a2a" transform="rotate(-25 1.4 4.6)" />
-                <ellipse cx="5.6" cy="4.6" rx="1.2" ry=".55" fill="#4f8a2a" transform="rotate(25 5.6 4.6)" />
-                <circle cx="0" cy="2" r=".5" fill="#2f6fb5" />
-                <circle cx="7" cy="2" r=".5" fill="#2f6fb5" />
+              {/* braided rope: twisted diagonal strands */}
+              <pattern id="rp-braid" width="2.8" height="2.4" patternUnits="userSpaceOnUse">
+                <rect width="2.8" height="2.4" fill="#d6c8a6" />
+                <path d="M0 2.4 L2.8 0" stroke="#8d7a52" strokeWidth=".7" />
+                <path d="M-1.4 1.2 L1.4 -1.2" stroke="#8d7a52" strokeWidth=".7" />
+                <path d="M1.4 3.6 L4.2 1.2" stroke="#8d7a52" strokeWidth=".7" />
+                <path d="M0 0 L2.8 2.4" stroke="rgba(255,255,255,.35)" strokeWidth=".35" />
               </pattern>
-              <filter id="bl-blur" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur stdDeviation=".45" />
-              </filter>
-              <clipPath id="bl-clip">
-                <path d={BELL_D} />
+              <linearGradient id="rp-round" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0" stopColor="rgba(40,25,5,.45)" />
+                <stop offset=".35" stopColor="rgba(255,255,255,.3)" />
+                <stop offset=".6" stopColor="rgba(0,0,0,0)" />
+                <stop offset="1" stopColor="rgba(40,25,5,.5)" />
+              </linearGradient>
+              <linearGradient id="bl-wood-h" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0" stopColor="#3f2209" />
+                <stop offset=".3" stopColor="#a8683a" />
+                <stop offset=".5" stopColor="#c98a55" />
+                <stop offset=".75" stopColor="#8a4f24" />
+                <stop offset="1" stopColor="#3a1f08" />
+              </linearGradient>
+              <clipPath id="bl-pear-clip">
+                <path d={PEAR_D} />
               </clipPath>
             </defs>
 
@@ -447,53 +305,50 @@ export default function Bell() {
             <ellipse cx={HX} cy="31.6" rx="2.5" ry="5.7" fill="none" stroke="rgba(0,0,0,.32)" strokeWidth="2.4" />
             <ellipse cx={HX} cy="31.6" rx="2.5" ry="5.7" fill="none" stroke="url(#bl-gold)" strokeWidth="1.6" />
 
-            {/* cord pieces */}
-            <rect x="22.25" y="37" width="1.5" height="5" fill="url(#bl-cord)" />
-            <rect x="22.25" y="47" width="1.5" height="5.5" fill="url(#bl-cord)" />
-            <rect x="22.25" y="60" width="1.5" height="5" fill="url(#bl-cord)" />
-            <rect x="22.25" y="91" width="1.5" height="4.5" fill="url(#bl-cord)" />
+            {/* braided rope: its height changes while you pull (set by the physics loop) */}
+            <rect ref={ropeRef} x={HX - 1.4} y={ROPE_Y0 + 4} width="2.8" height={ROPE_LEN} fill="url(#rp-braid)" />
+            <rect x={HX - 1.4} y={ROPE_Y0 + 4} width="2.8" height="400" fill="none" />
 
-            {/* beads */}
-            <Sphere cx={HX} cy="44.5" r="3.1" fill="bl-goldball" />
-            <Sphere cx={HX} cy="56.6" r="4.4" fill="bl-wood" />
-            {[0, 1, 2, 3, 4].map((k) => (
-              <Sphere key={k} cx={HX + (k % 2 ? 0.6 : -0.6)} cy={67.6 + k * 5.4} r="3.1" fill="bl-yel" />
-            ))}
+            {/* handle group: slides down when the cord stretches */}
+            <g ref={handleRef}>
+              {/* rope shading, drawn only over the visible rope length via the handle offset */}
+              {/* brass ferrule */}
+              <rect x="20.4" y={ROPE_Y0 + 4 + ROPE_LEN - 1} width="5.2" height="5.6" rx=".9" fill="url(#bl-gold)" stroke="rgba(60,35,0,.55)" strokeWidth=".4" />
+              <rect x="20.9" y={ROPE_Y0 + 4 + ROPE_LEN + 1.4} width="4.2" height=".7" fill="rgba(60,35,0,.35)" />
+              <ellipse cx={HX} cy={ROPE_Y0 + 4 + ROPE_LEN + 4.6} rx="2.6" ry=".8" fill="#b8862b" />
 
-            {/* clapper (peeks out under the lip) */}
-            <Sphere cx={HX} cy="128.4" r="2.6" fill="bl-wood" />
-
-            {/* ceramic bell */}
-            <path d={BELL_D} fill="url(#bl-ceramic)" />
-            <g clipPath="url(#bl-clip)">
-              {/* floral band */}
-              <rect x="8" y="110.8" width="30" height=".8" fill="#d9a933" />
-              <rect x="8" y="111.8" width="30" height="8" fill="url(#bl-floral)" />
-              <rect x="8" y="119.9" width="30" height=".8" fill="#d9a933" />
-              {/* blue rim */}
-              <path d={RIM_D} fill="url(#bl-blue)" />
-              {/* soft shading for depth and the round, lit look */}
-              <rect x="8" y="96" width="30" height="36" fill="url(#bl-depth)" />
-              <rect x="8" y="96" width="30" height="36" fill="url(#bl-round)" />
-              {/* glossy streak */}
-              <path
-                d="M19 101 C17 108 15 113 13.4 119"
-                stroke="#fff" strokeWidth="1.7" strokeLinecap="round" fill="none" opacity=".75" filter="url(#bl-blur)"
-              />
+              {/* wooden pear handle */}
+              <path d={PEAR_D} fill="url(#bl-wood-h)" />
+              <g clipPath="url(#bl-pear-clip)">
+                {/* wood grain */}
+                <path d="M19.6 116 C18 124 18.4 131 20.2 137" stroke="rgba(60,30,8,.45)" strokeWidth=".45" fill="none" />
+                <path d="M21.6 116 C20.6 124 20.8 131 21.8 137" stroke="rgba(60,30,8,.4)" strokeWidth=".4" fill="none" />
+                <path d="M24.4 116 C25.4 124 25.2 131 24.2 137" stroke="rgba(60,30,8,.4)" strokeWidth=".4" fill="none" />
+                <path d="M26.6 116 C28 124 27.6 131 25.8 137" stroke="rgba(60,30,8,.45)" strokeWidth=".45" fill="none" />
+                {/* soft light on the left, shadow under the belly */}
+                <ellipse cx="19.8" cy="126" rx="1.4" ry="5" fill="#fff" opacity=".28" />
+                <rect x="14" y="132" width="18" height="6" fill="rgba(30,12,0,.25)" />
+              </g>
+              <path d={PEAR_D} fill="none" stroke="rgba(40,18,0,.55)" strokeWidth=".5" strokeLinejoin="round" />
             </g>
-            <path d={BELL_D} fill="none" stroke="rgba(20,40,70,.45)" strokeWidth=".6" strokeLinejoin="round" />
-
-            {/* gold cap on top of the bell */}
-            <rect x="21" y="94.4" width="4" height="5.4" rx=".8" fill="url(#bl-gold)" stroke="rgba(60,35,0,.5)" strokeWidth=".4" />
-            <ellipse cx={HX} cy="94.4" rx="2" ry=".7" fill="#fff0a8" stroke="rgba(60,35,0,.4)" strokeWidth=".3" />
           </svg>
 
-          {/* touch area for the cord and bell (swings with it) */}
+          {/* round shading over the visible rope (kept short; the stretching rope reads fine without it) */}
+          <svg width={SW} height={SH} viewBox={`0 0 ${SW} ${SH}`} style={{ position: "absolute", left: 0, top: 0, overflow: "visible", pointerEvents: "none" }}>
+            <rect x={HX - 1.4} y={ROPE_Y0 + 4} width="2.8" height={ROPE_LEN} fill="url(#rp-round)" />
+          </svg>
+
+          {/* touch area for the rope and handle (swings with it). Tall enough to follow a stretched cord. */}
           <div
             onPointerMove={onMove}
             onPointerLeave={onLeave}
             onPointerDown={onDown}
-            style={{ position: "absolute", left: 8, top: 33, width: 30, height: 100, pointerEvents: "auto", cursor: "pointer" }}
+            onPointerUp={(e) => finish(e, false)}
+            onPointerCancel={(e) => finish(e, true)}
+            style={{
+              position: "absolute", left: 6, top: 33, width: 34, height: 112,
+              pointerEvents: "auto", cursor: "grab", touchAction: "none",
+            }}
           />
         </div>
       </div>
@@ -502,10 +357,10 @@ export default function Bell() {
 
   return (
     <>
-      {/* keeps the space in the navbar; the bell itself lives in its own top layer */}
+      {/* keeps the space in the navbar; the cord itself lives in its own top layer */}
       <div ref={slotRef} className="ml-2 h-7 w-[34px] shrink-0" aria-hidden="true" />
-      {bell && createPortal(bell, document.body)}
-      {/* the King of Spades overlay (listens for the bell) */}
+      {cord && createPortal(cord, document.body)}
+      {/* the King of Spades overlay (listens for the cord) */}
       <KingCard />
     </>
   );
