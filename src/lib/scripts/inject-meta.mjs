@@ -22,7 +22,7 @@ const SB = process.env.VITE_SUPABASE_URL;
 const KEY = process.env.VITE_SUPABASE_ANON_KEY;
 
 const FALLBACK = {
-  site_url: "https://prabhatdubey.github.io",
+    site_url: "https://prabhatdubeypd.github.io",
   site_name: "Prabhat Kumar Dubey",
   title_en: "Prabhat Kumar Dubey | Portfolio",
   description_en: "Portfolio of Prabhat Kumar Dubey, Flutter and Android developer. Explore my work and get in touch.",
