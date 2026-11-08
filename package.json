@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prebuild": "node scripts/inject-meta.mjs"
+    
   },
   "dependencies": {
     "@microsoft/clarity": "^1.0.2",

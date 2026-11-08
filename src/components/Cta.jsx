@@ -46,12 +46,22 @@ export default function Cta({ onSeeWork, dark = false }) {
               </svg>
             </span>
           </button>
-          <a
-            href="#projects"
-            className="flex h-12 items-center rounded-full border border-white/20 px-6 text-sm font-medium text-white transition duration-300 hover:scale-105 hover:bg-white/10 active:scale-95"
-          >
-            {t("see_work")}
-          </a>
+                    {onSeeWork ? (
+            <button
+              type="button"
+              onClick={onSeeWork}
+              className="flex h-12 items-center rounded-full border border-white/20 px-6 text-sm font-medium text-white transition duration-300 hover:scale-105 hover:bg-white/10 active:scale-95"
+            >
+              {t("see_work")}
+            </button>
+          ) : (
+            <a
+              href="#projects"
+              className="flex h-12 items-center rounded-full border border-white/20 px-6 text-sm font-medium text-white transition duration-300 hover:scale-105 hover:bg-white/10 active:scale-95"
+            >
+              {t("see_work")}
+            </a>
+          )}
         </div>
       </div>
     );
