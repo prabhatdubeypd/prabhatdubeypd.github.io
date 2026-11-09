@@ -322,7 +322,7 @@ function StackCard({ i, n, progress, children }) {
 }
 
 /* ---------- Category page ---------- */
-export default function BookReader({ c, index, list, lang, start, anim, onClose }) {
+export default function BookReader({ c, index, list, lang, start, anim, fromZoom, onClose }) {
   const { t } = useData();
   const rootRef = useRef(null);
   const stackRef = useRef(null);
@@ -358,9 +358,9 @@ export default function BookReader({ c, index, list, lang, start, anim, onClose 
   return (
     <motion.div
       className="fixed inset-0 z-20 bg-bg text-ink"
-      initial={{ opacity: 0 }}
+            initial={{ opacity: fromZoom ? 1 : 0 }}
       animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      exit={{ opacity: fromZoom ? [1, 1] : 0, transition: { duration: fromZoom ? 0.45 : anim ? 0.5 : 0 } }}
       transition={{ duration: anim ? 0.5 : 0 }}
     >
       <div ref={rootRef} className="relative h-full overflow-y-auto">

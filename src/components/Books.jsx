@@ -20,7 +20,6 @@ const soft = [0.22, 1, 0.36, 1]; // smooth settle
 const face = { backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden" };
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
 
-
 const READER_BG = { light: "var(--c-bg)", dark: "var(--c-bg)" };
 
 const PAPER = {
@@ -42,7 +41,7 @@ const PW = 218, PH = 318; // title page size
 const SLOT = 310; // width of one door slot
 const ARCH_W = 270; // arch (door) width
 const ARCH_H = 470; // arch (door) height = slot height
-const OPEN_MS = 1250; // time the cover takes to open before the zoom starts
+const OPEN_MS = 1000; // time the cover takes to open before the zoom starts
 const SHOW_TITLE = true; // true = gold title, author and number on top of the cover image; false = image only
 
 const splitQ = (q) => {
@@ -107,6 +106,24 @@ function FitRow({ n, phone, trackRef, step, overlay, children }) {
     ro.observe(inner.current);
     return () => ro.disconnect();
   }, [n, phone]);
+
+  // never let the books paint over the fixed navbar: cut them off at its bottom edge
+  useEffect(() => {
+    const el = outer.current;
+    if (!el) return;
+    const clip = () => {
+      const cut = Math.max(0, NAVH - el.getBoundingClientRect().top);
+      el.style.clipPath = cut > 0 ? `inset(${cut}px -9999px -9999px -9999px)` : "none";
+    };
+    clip();
+    window.addEventListener("scroll", clip, { passive: true });
+    window.addEventListener("resize", clip);
+    return () => {
+      window.removeEventListener("scroll", clip);
+      window.removeEventListener("resize", clip);
+      el.style.clipPath = "";
+    };
+  }, [phone]);
 
   // phones: the page scroll moves the row sideways
   useEffect(() => {
@@ -214,7 +231,7 @@ function CursorPill({ show, label }) {
   return (
     <motion.div className="pointer-events-none fixed left-0 top-0 z-[70]" style={{ x: sx, y: sy }}>
       <motion.div
-               className="-translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-black px-3 py-1 text-[10px] font-medium text-white shadow-[0_6px_16px_rgba(0,0,0,.4)] ring-1 ring-amber-300/40 dark:bg-white dark:text-black"
+        className="-translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-black px-3 py-1 text-[10px] font-medium text-white shadow-[0_6px_16px_rgba(0,0,0,.4)] ring-1 ring-amber-300/40 dark:bg-white dark:text-black"
         initial={false}
         animate={{ opacity: show ? 1 : 0, scale: show ? 1 : 0.6 }}
         transition={{ duration: 0.2, ease: soft }}
@@ -510,7 +527,7 @@ function CoverFront({ c, title, byline, numeral, open }) {
 // open    = the cursor is on this book (lit, cover ajar)
 // anyOpen = some book is open (the others fade)
 // opening = it was clicked: cover swings fully open, then the zoom starts
-function ShelfBook({ c, index, lang, dark, open, anyOpen, opening, anim, hover, byline, pageRef, onClick, onOpen, onLeave }) {
+function ShelfBook({ c, index, lang, dark, open, anyOpen, opening, anim, hover, lite, byline, pageRef, onClick, onOpen, onLeave }) {
   const title = tx(c.name, lang);
   const dk = shade(c.color, 45);
   const tilt = open && hover && !opening;
@@ -537,6 +554,14 @@ function ShelfBook({ c, index, lang, dark, open, anyOpen, opening, anim, hover, 
     onLeave();
   };
 
+  // while the cover opens, level the book so the zoom starts from a flat, steady page
+  useEffect(() => {
+    if (opening) {
+      mx.set(0);
+      my.set(0);
+    }
+  }, [opening, mx, my]);
+
   const nicheBg = dark
     ? "linear-gradient(180deg,#0a0807 0%,#15110d 100%)"
     : "linear-gradient(180deg,#d2cbbf 0%,#e8e2d8 100%)";
@@ -548,7 +573,7 @@ function ShelfBook({ c, index, lang, dark, open, anyOpen, opening, anim, hover, 
   return (
     // the WHOLE slot is the click target
     <div
-            className="relative shrink-0 snap-center"
+      className="relative shrink-0 snap-center"
       style={{ width: SLOT, height: ARCH_H, cursor: "none", zIndex: open ? 5 : 1 }}
       onClick={(e) => {
         e.stopPropagation();
@@ -571,7 +596,7 @@ function ShelfBook({ c, index, lang, dark, open, anyOpen, opening, anim, hover, 
         transition={{ duration: 0.8 }}
       />
 
-      <div className={`absolute inset-0 transition-all duration-700 ${faded ? "opacity-30 blur-[2px]" : ""}`}>
+      <div className={`absolute inset-0 transition-all duration-700 ${faded ? (lite ? "opacity-30" : "opacity-30 blur-[2px]") : ""}`}>
         {/* arched door frame */}
         <div
           className="pointer-events-none absolute bottom-0 overflow-hidden"
@@ -763,10 +788,13 @@ function InfoPanel({ c, index, lang, dark, byline, wrap, touch, label, onEnter }
 }
 
 /* ---------- Pick up the phrase, fly it to the category heading, paste it there ---------- */
-function ZoomPage({ rect, dir, c, lang, dark, onDone }) {
+function ZoomPage({ rect, dir, c, lang, dark, fast, onDone }) {
   const phraseRef = useRef(null); // the phrase on the book page
   const tgtRef = useRef(null); // the heading at its final place
   const doneRef = useRef(false);
+  const landRef = useRef(false);
+  const doneFn = useRef(onDone);
+  doneFn.current = onDone;
   const stageRef = useRef(dir === "in" ? "rest" : "fly");
   const [stage, setStageState] = useState(stageRef.current);
   const [geo, setGeo] = useState(null);
@@ -775,6 +803,22 @@ function ZoomPage({ rect, dir, c, lang, dark, onDone }) {
     stageRef.current = s;
     setStageState(s);
   };
+  // always finishes exactly once
+  const finish = () => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    doneFn.current();
+  };
+
+  const glide = [0.45, 0.05, 0.2, 1]; // gentle ease: no sudden speed-ups
+  const colorMs = fast ? 650 : 900; // how long the colour stage lasts
+  const flyDur = fast ? 1.1 : 1.45; // how long the flight takes
+
+  // safety net: if an animation callback is ever missed, the sequence still ends
+  useEffect(() => {
+    const id = setTimeout(finish, dir === "in" ? 5200 : 3200);
+    return () => clearTimeout(id);
+  }, []);
 
   // measure: where the phrase is now, and where the heading will be
   useLayoutEffect(() => {
@@ -787,12 +831,12 @@ function ZoomPage({ rect, dir, c, lang, dark, onDone }) {
   useEffect(() => {
     if (!geo) return;
     if (!geo.ok) {
-      if (!doneRef.current) { doneRef.current = true; onDone(); }
+      finish();
       return;
     }
     if (dir === "in") {
       setStage("color"); // 1) colour the phrase, dim the site
-      const id = setTimeout(() => setStage("fly"), 1000); // 2) pick it up and fly
+      const id = setTimeout(() => setStage("fly"), colorMs); // 2) pick it up and fly
       return () => clearTimeout(id);
     }
   }, [geo, dir]);
@@ -804,24 +848,25 @@ function ZoomPage({ rect, dir, c, lang, dark, onDone }) {
 
   const ident = { x: 0, y: 0, scale: 1 };
   const srcT = geo?.ok ? { x: geo.dx, y: geo.dy, scale: geo.k } : ident;
-  const glowOn = `0 0 34px ${hotColor}`;
-  const glowOff = `0 0 0px ${hotColor}`;
-  const fInitial = fIn ? { ...srcT, textShadow: glowOn } : { ...ident, textShadow: glowOff };
-  const fAnimate = fIn
-    ? flying ? { ...ident, textShadow: glowOff } : { ...srcT, textShadow: glowOn }
-    : { ...srcT, textShadow: glowOn };
-  const fTransition = fIn ? (flying ? { duration: 1.35, ease } : { duration: 0 }) : { duration: 1.2, ease };
+  const fInitial = fIn ? srcT : ident;
+  const fAnimate = fIn ? (flying ? ident : srcT) : srcT;
+  const fTransition = fIn
+    ? flying ? { duration: flyDur, ease: glide } : { duration: 0 }
+    : { duration: fast ? 1 : 1.2, ease: glide };
 
   const left0 = rect.cx - PW / 2;
   const top0 = rect.cy - PH / 2;
 
   return (
+    // sits BELOW the navbar and is cut off at its bottom edge, exactly like the books are,
+    // so nothing can ever appear on top of the navbar or outside the book area
     <motion.div
-      className="pointer-events-none fixed inset-0 z-[60]"
+      className="pointer-events-none fixed inset-0 z-[25]"
+      style={{ clipPath: `inset(${NAVH}px 0 0 0)` }}
       initial={{ opacity: fIn ? 1 : 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.35 }}
+      transition={{ duration: 0.4 }}
     >
       {/* the site fades into the page background (theme aware) */}
       <motion.div
@@ -831,12 +876,12 @@ function ZoomPage({ rect, dir, c, lang, dark, onDone }) {
         animate={{ opacity: fIn ? (flying ? 1 : stage === "color" ? 0.55 : 0) : 0 }}
         transition={
           fIn
-            ? flying ? { duration: 1, delay: 0.15, ease: soft } : { duration: 0.8, ease: soft }
-            : { duration: 1, delay: 0.25, ease: soft }
+            ? flying ? { duration: 1.1, delay: 0.1, ease: "easeInOut" } : { duration: 0.8, ease: "easeInOut" }
+            : { duration: 1, delay: 0.25, ease: "easeInOut" }
         }
       />
 
-      {/* colour bloom around the phrase */}
+      {/* soft colour bloom around the phrase */}
       <motion.div
         className="absolute rounded-full"
         style={{
@@ -845,26 +890,25 @@ function ZoomPage({ rect, dir, c, lang, dark, onDone }) {
         }}
         initial={{ opacity: 0, scale: 0.4 }}
         animate={
-          fIn && stage === "color" ? { opacity: 0.4, scale: 1.1 }
-          : fIn && flying ? { opacity: 0, scale: 1.8 }
+          fIn && stage === "color" ? { opacity: 0.35, scale: 1.1 }
+          : fIn && flying ? { opacity: 0, scale: 1.6 }
           : { opacity: 0, scale: 0.4 }
         }
-        transition={{ duration: 0.9, ease: soft }}
+        transition={{ duration: 0.9, ease: "easeInOut" }}
       />
 
-      {/* the book page (identical to the one on the shelf) */}
+      {/* the book page: an exact copy, in exactly the same place, same size, no shadow.
+          It never moves or grows, it just dissolves while the title flies out of it. */}
       <motion.div
         className="overflow-hidden"
         style={{
-          position: "fixed", left: left0, top: top0, width: PW, height: PH, borderRadius: 3,
-          boxShadow: "0 24px 70px rgba(0,0,0,.45)",
+          position: "fixed", left: left0, top: top0, width: PW, height: PH,
+          borderRadius: "0 3px 3px 0", scale: rect.s0,
         }}
-        initial={{ opacity: fIn ? 1 : 0, scale: rect.s0 }}
-        animate={
-          fIn && flying ? { opacity: 0, scale: rect.s0 * 1.08 } : { opacity: 1, scale: rect.s0 }
-        }
+        initial={{ opacity: fIn ? 1 : 0 }}
+        animate={{ opacity: fIn && flying ? 0 : 1 }}
         transition={
-          fIn ? { duration: flying ? 0.8 : 0, ease: soft } : { duration: 0.9, delay: 0.3, ease: soft }
+          fIn ? { duration: flying ? 0.9 : 0, ease: "easeInOut" } : { duration: 0.9, delay: 0.3, ease: "easeInOut" }
         }
       >
         <TitlePage c={c} lang={lang} dark={dark} stage={stage} phraseRef={phraseRef} />
@@ -888,15 +932,13 @@ function ZoomPage({ rect, dir, c, lang, dark, onDone }) {
               onAnimationComplete={() => {
                 if (!geo?.ok || doneRef.current) return;
                 if (fIn) {
-                  if (stageRef.current === "fly") {
-                    doneRef.current = true;
-                    onDone(); // pasted on the heading -> show the category page
-                  }
+                  if (stageRef.current === "fly") finish(); // pasted on the heading -> show the category page
                 } else {
-                  doneRef.current = true; // flew back into the book
+                  if (landRef.current) return;
+                  landRef.current = true; // flew back into the book
                   setStage("land");
                   setTimeout(() => setStage("rest"), 350);
-                  setTimeout(onDone, 800);
+                  setTimeout(finish, 700);
                 }
               }}
             >
@@ -929,7 +971,7 @@ function Wall({ dark, parallax, onClick, header, children }) {
       const I = Math.max(24, Math.min((W - 1260) / 2, W * 0.14)); // how far the side walls are inset
       const a = W / 2 - I;
       const L = Math.max(80, PERSP * (1 - a / (W / 2)) * 1.15); // how far the room comes forward
-            setG({ W, off, I, L, ET: W < 640 ? 40 : 60, EB: W < 640 ? 44 : 70 });
+      setG({ W, off, I, L, ET: W < 640 ? 40 : 60, EB: W < 640 ? 44 : 70 });
     };
     calc();
     window.addEventListener("resize", calc);
@@ -997,19 +1039,19 @@ function Wall({ dark, parallax, onClick, header, children }) {
 
   return (
     <div
-         ref={outerRef}
+      ref={outerRef}
       id="room"
       className="relative overflow-hidden"
       style={{
         width: g.W,
         marginLeft: -g.off,
-                marginTop: 0,
+        marginTop: 0,
         paddingTop: g.ET,
         background: C.fill,
         WebkitMaskImage: "linear-gradient(180deg, transparent 0, #000 34px)",
         maskImage: "linear-gradient(180deg, transparent 0, #000 34px)",
       }}
-            onMouseMove={(e) => {
+      onMouseMove={(e) => {
         if (!parallax) return;
         const r = e.currentTarget.getBoundingClientRect();
         target.current = {
@@ -1071,7 +1113,7 @@ function Wall({ dark, parallax, onClick, header, children }) {
 
           {/* the doors + books (on the back wall) */}
           <div className="relative" style={{ marginLeft: g.I, marginRight: g.I }}>
-                        <div className="relative px-3 pt-10 md:px-8">
+            <div className="relative px-3 pt-10 md:px-8">
               {header}
               {children}
             </div>
@@ -1107,7 +1149,7 @@ export default function Books() {
   const pageRefs = useRef({});
   const openTimer = useRef(null);
 
-    const phone = usePhone();
+  const phone = usePhone();
   const trackRef = useRef(null);
   const stickyRef = useRef(null);
   const [wallH, setWallH] = useState(0);
@@ -1137,13 +1179,20 @@ export default function Books() {
   const cur = categories.find((c) => c.id === focusId);
   const curIndex = categories.findIndex((c) => c.id === focusId) + 1;
 
-  useEffect(() => {
-    // page can still scroll while the cover opens; it locks once the zoom starts
-    document.body.style.overflow = phase === "idle" || phase === "opening" ? "" : "hidden";
-    return () => { document.body.style.overflow = ""; };
+   useEffect(() => {
+    // lock the page the moment a book is clicked, so nothing can move under the animation
+    const html = document.documentElement;
+    if (phase !== "idle") {
+      html.style.scrollbarGutter = "stable"; // keeps the page the same width when the scrollbar hides
+      document.body.style.overflow = "hidden";
+    }
+    return () => {
+      html.style.scrollbarGutter = "";
+      document.body.style.overflow = "";
+    };
   }, [phase]);
 
-    // tell the navbar which book is open, so it can underline that book's name
+  // tell the navbar which book is open, so it can underline that book's name
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("book-active", { detail: phase === "inside" ? activeId : null })
@@ -1176,7 +1225,7 @@ export default function Books() {
     }, OPEN_MS);
   };
 
-    const onBookClick = (id) => {
+  const onBookClick = (id) => {
     if (phase !== "idle") return;
     enter(id); // one tap / click enters
   };
@@ -1219,78 +1268,77 @@ export default function Books() {
   }, []);
 
   return (
-      <section id="projects" className="scroll-mt-20 pb-4 pt-6">
+    <section id="projects" className="scroll-mt-20 pb-4 pt-6">
       <div
         ref={trackRef}
         style={phone && wallH ? { height: wallH + (categories.length - 1) * step } : undefined}
       >
-      <div ref={stickyRef} style={phone ? { position: "sticky", top: NAVH } : undefined}>
-      <Wall
-        dark={dark}
-        parallax={features.wallParallax === true}
-        onClick={() => { if (touch && phase === "idle") setFocusId(null); }}
-        header={
-          <div className="mb-6 text-center md:mb-8">
-            <p className="flex items-center justify-center gap-3 text-[10px] font-semibold uppercase tracking-[0.35em] opacity-70 md:text-xs">
-              <span className="h-px w-8 bg-current opacity-50 md:w-10" />
-              {t("books_eyebrow")}
-              <span className="h-px w-8 bg-current opacity-50 md:w-10" />
-            </p>
-            <h2 className="mx-auto mt-2 max-w-4xl font-serif text-3xl font-bold leading-[1.05] tracking-tight md:text-5xl">
-              {t("books_title")}
-            </h2>
-            <p className="mx-auto mt-2 max-w-xl text-sm opacity-70 md:text-base">{t("books_sub")}</p>
-          </div>
-        }
-      >
-
-        
-                <FitRow
-          n={categories.length}
-          phone={phone}
-          trackRef={trackRef}
-          step={step}
-          overlay={(wrap) => (
-            <AnimatePresence mode="wait">
-              {cur && (
-                <InfoPanel
-                  key={cur.id}
-                  c={cur}
-                  index={curIndex}
+        <div ref={stickyRef} style={phone ? { position: "sticky", top: NAVH } : undefined}>
+          <Wall
+            dark={dark}
+            parallax={features.wallParallax === true}
+            onClick={() => { if (touch && phase === "idle") setFocusId(null); }}
+            header={
+              <div className="mb-6 text-center md:mb-8">
+                <p className="flex items-center justify-center gap-3 text-[10px] font-semibold uppercase tracking-[0.35em] opacity-70 md:text-xs">
+                  <span className="h-px w-8 bg-current opacity-50 md:w-10" />
+                  {t("books_eyebrow")}
+                  <span className="h-px w-8 bg-current opacity-50 md:w-10" />
+                </p>
+                <h2 className="mx-auto mt-2 max-w-4xl font-serif text-3xl font-bold leading-[1.05] tracking-tight md:text-5xl">
+                  {t("books_title")}
+                </h2>
+                <p className="mx-auto mt-2 max-w-xl text-sm opacity-70 md:text-base">{t("books_sub")}</p>
+              </div>
+            }
+          >
+            <FitRow
+              n={categories.length}
+              phone={phone}
+              trackRef={trackRef}
+              step={step}
+              overlay={(wrap) => (
+                <AnimatePresence mode="wait">
+                  {cur && (
+                    <InfoPanel
+                      key={cur.id}
+                      c={cur}
+                      index={curIndex}
+                      lang={lang}
+                      dark={dark}
+                      byline={byline}
+                      wrap={wrap}
+                      touch={touch}
+                      label={t("click_to_enter")}
+                      onEnter={() => enter(cur.id)}
+                    />
+                  )}
+                </AnimatePresence>
+              )}
+            >
+              {categories.map((c, i) => (
+                <ShelfBook
+                  key={c.id}
+                  c={c}
+                  index={i + 1}
                   lang={lang}
                   dark={dark}
+                  open={focusId === c.id}
+                  anyOpen={!!focusId}
+                  opening={openingId === c.id}
+                  anim={anim}
+                  hover={hover}
+                  lite={phone}
                   byline={byline}
-                  wrap={wrap}
-                  touch={touch}
-                  label={t("click_to_enter")}
-                  onEnter={() => enter(cur.id)}
+                  pageRef={(el) => { pageRefs.current[c.id] = el; }}
+                  onClick={() => onBookClick(c.id)}
+                  onOpen={() => onOpen(c.id)}
+                  onLeave={() => onLeave(c.id)}
                 />
-              )}
-            </AnimatePresence>
-          )}
-        >
-          {categories.map((c, i) => (
-            <ShelfBook
-              key={c.id}
-              c={c}
-              index={i + 1}
-              lang={lang}
-              dark={dark}
-              open={focusId === c.id}
-              anyOpen={!!focusId}
-              opening={openingId === c.id}
-              anim={anim}
-              hover={hover}
-              byline={byline}
-              pageRef={(el) => { pageRefs.current[c.id] = el; }}
-              onClick={() => onBookClick(c.id)}
-              onOpen={() => onOpen(c.id)}
-              onLeave={() => onLeave(c.id)}
-            />
-          ))}
-        </FitRow>
-      </Wall>
-            </div>
+              ))}
+            </FitRow>
+          </Wall>
+        </div>
       </div>
 
       {/* cursor-following label: only while the cursor is on a book (desktop) */}
@@ -1305,6 +1353,7 @@ export default function Books() {
             c={active}
             lang={lang}
             dark={dark}
+            fast={phone || touch}
             onDone={() => {
               if (phase === "zoomIn") setPhase("inside");
               else closeNow();
@@ -1323,6 +1372,7 @@ export default function Books() {
             lang={lang}
             start={0}
             anim={anim}
+            fromZoom={!!rect && anim}
             onClose={back}
           />
         )}

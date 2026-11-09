@@ -43,3 +43,4 @@ html, body {
   color: var(--c-text);
 }
 
+html { scrollbar-gutter: stable; }
