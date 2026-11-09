@@ -7,6 +7,8 @@ import useSocials from "../lib/useSocials";
 import { MailIcon, SocialIcon } from "./SocialIcon";
 import Cta from "./Cta";
 
+import InstallApp from "./InstallApp";
+
 const openBook = (id) => window.dispatchEvent(new CustomEvent("open-book", { detail: id }));
 const fire = (name) => () => window.dispatchEvent(new CustomEvent(name));
 
@@ -119,6 +121,8 @@ export default function Footer() {
                 ⬇ {tr("resume", "Download résumé")}
               </a>
             )}
+
+                        <InstallApp className="mt-3" />
           </div>
 
           <div>

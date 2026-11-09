@@ -81,6 +81,28 @@ function usePhone() {
   return p;
 }
 
+// day = 5 am to 5 pm, night = the rest. To test, add ?room=night or ?room=day to the address.
+const isNight = () => {
+  const q = new URLSearchParams(window.location.search).get("room");
+  if (q === "night") return true;
+  if (q === "day") return false;
+  const h = new Date().getHours();
+  return h < 5 || h >= 17;
+};
+function useNight() {
+  const [n, setN] = useState(isNight);
+  useEffect(() => {
+    const id = setInterval(() => setN(isNight()), 60000);
+    return () => clearInterval(id);
+  }, []);
+  return n;
+}
+
+const DAY_GLOW =
+  "radial-gradient(ellipse 60% 90% at 8% 20%, rgba(255,232,170,.55), transparent 70%), linear-gradient(105deg, rgba(255,240,200,.35) 0%, transparent 45%)";
+const NIGHT_GLOW =
+  "radial-gradient(ellipse 55% 80% at 92% 15%, rgba(130,160,235,.28), transparent 70%), radial-gradient(ellipse 40% 50% at 8% 90%, rgba(255,170,80,.10), transparent 70%)";
+
 const NAVH = 56; // height of your fixed navbar
 
 function FitRow({ n, phone, trackRef, step, overlay, children }) {
@@ -529,7 +551,7 @@ function CoverFront({ c, title, byline, numeral, open }) {
 // open    = the cursor is on this book (lit, cover ajar)
 // anyOpen = some book is open (the others fade)
 // opening = it was clicked: cover swings fully open, then the zoom starts
-function ShelfBook({ c, index, lang, dark, open, anyOpen, opening, anim, hover, lite, byline, pageRef, onClick, onOpen, onLeave }) {
+function ShelfBook({ c, index, lang, dark: themeDark, room: dark, open, anyOpen, opening, anim, hover, lite, byline, pageRef, onClick, onOpen, onLeave }) {
   const title = tx(c.name, lang);
   const dk = shade(c.color, 45);
   const tilt = open && hover && !opening;
@@ -684,7 +706,7 @@ function ShelfBook({ c, index, lang, dark, open, anyOpen, opening, anim, hover, 
                         borderRadius: "0 3px 3px 0", overflow: "hidden", textAlign: "left",
                       }}
                     >
-                      <TitlePage c={c} lang={lang} dark={dark} />
+                                            <TitlePage c={c} lang={lang} dark={themeDark} />
                     </div>
 
                     {/* ribbon bookmark */}
@@ -956,7 +978,7 @@ function ZoomPage({ rect, dir, c, lang, dark, fast, onDone }) {
 /* ---------- The 3D wall: a real CSS-3D room (back wall, side walls, ceiling, floor ledge) ---------- */
 const PERSP = 1100; // camera distance
 
-function Wall({ dark, parallax, onClick, header, children }) {
+function Wall({ dark, night, lamp, onLamp, parallax, onClick, header, children }) {
   const outerRef = useRef(null);
   const stageRef = useRef(null);
   const target = useRef({ x: 50, y: 50 });
@@ -1053,9 +1075,11 @@ function Wall({ dark, parallax, onClick, header, children }) {
         WebkitMaskImage: "linear-gradient(180deg, transparent 0, #000 34px)",
         maskImage: "linear-gradient(180deg, transparent 0, #000 34px)",
       }}
-      onMouseMove={(e) => {
-        if (!parallax) return;
+            onMouseMove={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
+        e.currentTarget.style.setProperty("--mx", `${e.clientX - r.left}px`);
+        e.currentTarget.style.setProperty("--my", `${e.clientY - r.top}px`);
+        if (!parallax) return;
         target.current = {
           x: 50 + ((e.clientX - r.left) / r.width - 0.5) * 36,
           y: 50 + ((e.clientY - r.top) / r.height - 0.5) * 28,
@@ -1073,6 +1097,7 @@ function Wall({ dark, parallax, onClick, header, children }) {
           {/* back wall */}
           <div className={`${plane} inset-y-0`} style={{ left: g.I, right: g.I, background: C.back }} />
           <div className={`${plane} inset-y-0`} style={{ left: g.I, right: g.I, background: C.vignette }} />
+                    <div className={`${plane} inset-y-0`} style={{ left: g.I, right: g.I, background: night ? NIGHT_GLOW : DAY_GLOW }} />
 
           {/* left wall */}
           <div
@@ -1128,6 +1153,34 @@ function Wall({ dark, parallax, onClick, header, children }) {
         </div>
       </div>
 
+            {/* lamp mode: the room dims and a spotlight follows the cursor */}
+      <div
+        className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-700"
+        style={{
+          opacity: lamp ? 1 : 0,
+          background:
+            "radial-gradient(circle 360px at var(--mx, 50%) var(--my, 58%), rgba(255,214,150,.08) 0%, transparent 45%, rgba(8,5,2,.6) 75%, rgba(8,5,2,.88) 100%)",
+        }}
+      />
+
+      {/* the lamp: click it to switch lamp mode on or off */}
+      <button
+        type="button"
+        aria-label="Lamp"
+        aria-pressed={lamp}
+        title="Lamp"
+        onClick={(e) => { e.stopPropagation(); onLamp(); }}
+        className="absolute z-30 transition-transform duration-300 hover:scale-110 active:scale-95"
+        style={{ left: g.I + 12, bottom: 28 }}
+      >
+        <svg width="34" height="60" viewBox="0 0 34 60" style={{ overflow: "visible", filter: lamp ? "drop-shadow(0 0 16px rgba(255,200,110,.95))" : "drop-shadow(0 3px 3px rgba(0,0,0,.3))" }}>
+          <ellipse cx="17" cy="56" rx="11" ry="3.2" fill="#8a6a2a" />
+          <rect x="15.6" y="22" width="2.8" height="33" fill="#c9972f" />
+          <path d="M5 22 L10 4 H24 L29 22 Z" fill={lamp ? "#ffe7a6" : "#e9dcc0"} stroke="#b8862b" strokeWidth="1" />
+          <ellipse cx="17" cy="22" rx="12" ry="2" fill={lamp ? "#fff4cf" : "#cdbf9f"} />
+        </svg>
+      </button>
+
       {/* front edge of the ledge */}
       <div
         className="relative z-20"
@@ -1142,6 +1195,9 @@ export default function Books() {
   const { lang, theme } = useSettings();
   const { profile, categories, projects, features, t } = useData();
   const dark = theme === "dark";
+    const night = useNight();
+  const roomDark = dark || night; // the room is dark at night, or when the site theme is dark
+  const [lamp, setLamp] = useState(false);
   const touch = useIsTouch();
   const [focusId, setFocusId] = useState(null); // the book the cursor is on (null = plain row of books)
   const [activeId, setActiveId] = useState(null); // book we entered
@@ -1305,12 +1361,15 @@ export default function Books() {
         style={phone && wallH ? { height: wallH + (categories.length - 1) * step } : undefined}
       >
         <div ref={stickyRef} style={phone ? { position: "sticky", top: NAVH } : undefined}>
-          <Wall
-            dark={dark}
+                <Wall
+        dark={roomDark}
+        night={night}
+        lamp={lamp}
+        onLamp={() => setLamp((v) => !v)}
             parallax={features.wallParallax === true}
             onClick={() => { if (touch && phase === "idle") setFocusId(null); }}
             header={
-              <div className="mb-6 text-center md:mb-8">
+                        <div className="mb-6 text-center md:mb-8" style={{ color: roomDark ? "#efe8d6" : "#1c1917" }}>
                 <p className="flex items-center justify-center gap-3 text-[10px] font-semibold uppercase tracking-[0.35em] opacity-70 md:text-xs">
                   <span className="h-px w-8 bg-current opacity-50 md:w-10" />
                   {t("books_eyebrow")}
@@ -1353,8 +1412,9 @@ export default function Books() {
                   c={c}
                   index={i + 1}
                   lang={lang}
-                  dark={dark}
-                  open={focusId === c.id}
+                                dark={dark}
+              room={roomDark}
+              open={focusId === c.id}
                   anyOpen={!!focusId}
                   opening={openingId === c.id}
                   anim={anim}

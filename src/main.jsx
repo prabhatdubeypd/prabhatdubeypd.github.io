@@ -10,6 +10,9 @@ import { initCal } from "./lib/cal";
 initAnalytics();
 initCal();
 
+import { initPwa } from "./lib/pwa";
+initPwa();
+
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <SettingsProvider>
