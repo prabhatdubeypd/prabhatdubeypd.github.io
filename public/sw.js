@@ -7,7 +7,11 @@ const IMGS = `img-${VERSION}`;
 const KEEP = [SHELL, ASSETS, DATA, IMGS];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(["/", "/manifest.webmanifest"])).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(SHELL)
+      .then((c) => c.add("/").catch(() => {}))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (e) => {
