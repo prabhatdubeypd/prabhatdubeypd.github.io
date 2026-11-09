@@ -7,7 +7,21 @@ import { supabase } from "../lib/supabase";
 import { tx } from "../lib/i18n";
 import { track } from "../lib/analytics";
 
-const EMPTY = { name: "", email: "", message: "", topic: "", hp: "" };
+const EMPTY = { name: "", email: "", message: "", topic: "", budget: "", deadline: "", hp: "" };
+
+// value saved in the database (English) + labels shown to the visitor
+const BUDGETS = [
+  { v: "Under ₹25k", en: "Under ₹25k", hi: "₹25 हज़ार से कम" },
+  { v: "₹25k to ₹75k", en: "₹25k to ₹75k", hi: "₹25 से 75 हज़ार" },
+  { v: "₹75k+", en: "₹75k+", hi: "₹75 हज़ार+" },
+  { v: "Not sure", en: "Not sure", hi: "पता नहीं" },
+];
+const DEADLINES = [
+  { v: "ASAP", en: "ASAP", hi: "जल्द से जल्द" },
+  { v: "Within a month", en: "Within a month", hi: "एक महीने में" },
+  { v: "1 to 3 months", en: "1 to 3 months", hi: "1 से 3 महीने" },
+  { v: "Flexible", en: "Flexible", hi: "लचीला" },
+];
 
 export default function HireModal() {
   const { lang } = useSettings();
@@ -22,6 +36,7 @@ export default function HireModal() {
     const v = t(k);
     return !v || v === k ? d : v;
   };
+  const L = (en, hi) => (lang === "hi" ? hi : en);
 
   // any "Hire me" button opens this
   useEffect(() => {
@@ -53,6 +68,7 @@ export default function HireModal() {
     { id: "other", label: tr("hire_other", "Something else"), en: "Something else" },
   ];
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
+  const pick = (k, v) => setF((s) => ({ ...s, [k]: s[k] === v ? "" : v }));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -70,11 +86,17 @@ export default function HireModal() {
     try { last = Number(localStorage.getItem("hire_last") || 0); } catch { /* ignore */ }
     if (Date.now() - last < 30000) { setStatus("error"); return; }
     setStatus("sending");
-    const { error } = await supabase
-      .from("inquiries")
-      .insert({ name, email, topic: f.topic || null, message, lang });
+    const { error } = await supabase.from("inquiries").insert({
+      name,
+      email,
+      topic: f.topic || null,
+      budget: f.budget || null,
+      deadline: f.deadline || null,
+      message,
+      lang,
+    });
     if (error) { setStatus("error"); track("hire_error"); return; }
-    track("hire_submit", { topic: f.topic || "none" });
+    track("hire_submit", { topic: f.topic || "none", budget: f.budget || "none", deadline: f.deadline || "none" });
     try { localStorage.setItem("hire_last", String(Date.now())); } catch { /* ignore */ }
     setStatus("done");
     setF(EMPTY);
@@ -87,6 +109,8 @@ export default function HireModal() {
   const input =
     "w-full rounded-xl border border-line bg-ink/5 px-4 py-3 text-sm outline-none transition placeholder:opacity-50 focus:border-accent";
   const label = "mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.2em] opacity-60";
+  const chip = (on) =>
+    `rounded-full border px-3.5 py-1.5 text-xs transition ${on ? "border-transparent bg-btn text-btn-ink" : "border-line hover:bg-ink/5"}`;
 
   return createPortal(
     <AnimatePresence>
@@ -101,10 +125,7 @@ export default function HireModal() {
           role="dialog"
           aria-modal="true"
         >
-          <div
-            className="fixed inset-0 bg-black/55 backdrop-blur-sm"
-            onClick={() => setOpen(false)}
-          />
+          <div className="fixed inset-0 bg-black/55 backdrop-blur-sm" onClick={() => setOpen(false)} />
 
           <motion.div
             className="relative my-6 w-full max-w-lg rounded-3xl border border-line bg-bg p-6 text-ink shadow-[0_40px_100px_rgba(0,0,0,.4)] md:p-8"
@@ -139,9 +160,9 @@ export default function HireModal() {
                     transition={{ duration: 0.6, delay: 0.2 }}
                   />
                 </motion.svg>
-                <h3 className="mt-5 font-serif text-3xl font-bold">{tr("hire_thanks_title", "Message sent")}</h3>
+                <h3 className="mt-5 font-serif text-3xl font-bold">{tr("hire_thanks_title", L("Message sent", "संदेश भेज दिया"))}</h3>
                 <p className="mx-auto mt-3 max-w-sm text-sm opacity-70">
-                  {tr("hire_thanks_body", "Thank you! I'll read it and reply to your email.")}
+                  {tr("hire_thanks_body", L("Got it! I'll reply to your email within a day.", "मिल गया! मैं एक दिन के भीतर आपके ईमेल पर जवाब दूँगा।"))}
                 </p>
                 <button
                   type="button"
@@ -171,17 +192,33 @@ export default function HireModal() {
                   <label className={label}>{tr("hire_topic", "What do you need?")}</label>
                   <div className="flex flex-wrap gap-2">
                     {opts.map((o) => (
-                      <button
-                        type="button"
-                        key={o.id}
-                        onClick={() => setF((s) => ({ ...s, topic: s.topic === o.en ? "" : o.en }))}
-                        className={`rounded-full border px-3.5 py-1.5 text-xs transition ${
-                          f.topic === o.en ? "border-transparent bg-btn text-btn-ink" : "border-line hover:bg-ink/5"
-                        }`}
-                      >
+                      <button type="button" key={o.id} onClick={() => pick("topic", o.en)} className={chip(f.topic === o.en)}>
                         {o.label}
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className={label}>{tr("hire_budget", L("Budget", "बजट"))}</label>
+                    <div className="flex flex-wrap gap-2">
+                      {BUDGETS.map((o) => (
+                        <button type="button" key={o.v} onClick={() => pick("budget", o.v)} className={chip(f.budget === o.v)}>
+                          {L(o.en, o.hi)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={label}>{tr("hire_deadline", L("Deadline", "समय सीमा"))}</label>
+                    <div className="flex flex-wrap gap-2">
+                      {DEADLINES.map((o) => (
+                        <button type="button" key={o.v} onClick={() => pick("deadline", o.v)} className={chip(f.deadline === o.v)}>
+                          {L(o.en, o.hi)}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 

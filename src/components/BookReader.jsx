@@ -28,22 +28,24 @@ function useDesktop() {
 /* ---------- Media inside the device ---------- */
 function DeviceVideo({ src, poster, active, muted }) {
   const ref = useRef(null);
+  const [armed, setArmed] = useState(active); // the video only downloads once its slide is reached
+  useEffect(() => { if (active) setArmed(true); }, [active]);
   useEffect(() => {
     const v = ref.current;
-    if (!v) return;
+    if (!v || !armed) return;
     v.muted = muted;
     if (active) v.play().catch(() => {});
     else v.pause();
-  }, [active, muted]);
+  }, [active, muted, armed]);
   return (
     <video
       ref={ref}
-      src={src}
+      src={armed ? src : undefined}
       poster={poster || undefined}
       loop
       muted
       playsInline
-      preload="metadata"
+      preload={armed ? "metadata" : "none"}
       className="h-full w-full object-cover"
     />
   );
@@ -51,7 +53,7 @@ function DeviceVideo({ src, poster, active, muted }) {
 
 function Media({ p, title, active, muted, t }) {
   if (p.video) return <DeviceVideo src={p.video} poster={p.image} active={active} muted={muted} />;
-  if (p.image) return <img src={p.image} alt={title} className="h-full w-full object-cover" />;
+   if (p.image) return <img src={p.image} alt={title} loading="lazy" decoding="async" className="h-full w-full object-cover" />;
   return (
     <div className="grid h-full place-items-center bg-gradient-to-br from-zinc-800 to-zinc-950 text-center text-xs text-white/60">
       <div>

@@ -1,9 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { useSettings } from "../context/SettingsContext";
 import { useData } from "../context/DataContext";
 import { tx } from "../lib/i18n";
-import BookReader from "./BookReader";
+const BookReader = lazy(() => import("./BookReader"));
 
 const shade = (hex, p = 55) => `color-mix(in srgb, ${hex} ${p}%, black)`;
 const lighten = (hex, p = 85) => `color-mix(in srgb, ${hex} ${p}%, white)`;
@@ -369,9 +369,11 @@ function ImageCover({ c, title, byline, numeral, open }) {
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,.1), inset 0 -18px 30px rgba(0,0,0,.35), 0 12px 28px rgba(0,0,0,.4)",
       }}
     >
-      <img
+            <img
         src={c.cover}
         alt=""
+        loading="lazy"
+        decoding="async"
         draggable={false}
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
       />
@@ -1149,6 +1151,12 @@ export default function Books() {
   const pageRefs = useRef({});
   const openTimer = useRef(null);
 
+    // fetch the reader code quietly after the page is ready
+  useEffect(() => {
+    const id = setTimeout(() => import("./BookReader"), 2500);
+    return () => clearTimeout(id);
+  }, []);
+
   const phone = usePhone();
   const trackRef = useRef(null);
   const stickyRef = useRef(null);
@@ -1385,6 +1393,7 @@ export default function Books() {
         )}
       </AnimatePresence>
 
+      <Suspense fallback={null}></Suspense>
       <AnimatePresence>
         {phase === "inside" && active && (
           <BookReader
@@ -1400,6 +1409,8 @@ export default function Books() {
           />
         )}
       </AnimatePresence>
+      
+      
     </section>
   );
 }

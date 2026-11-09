@@ -20,6 +20,18 @@ const COILS = 10;
 const GOLD_PEN = "var(--c-accent)";
 const REVEAL_R = 170; // radius of the colour circle around the cursor
 
+// greeting by the visitor's local time
+const GREET = {
+  en: { morning: "Good morning", afternoon: "Good afternoon", evening: "Good evening", night: "Hello" },
+  hi: { morning: "शुभ प्रभात", afternoon: "नमस्कार", evening: "शुभ संध्या", night: "नमस्ते" },
+};
+function greetingLine(lang, name) {
+  const h = new Date().getHours();
+  const part = h >= 5 && h < 12 ? "morning" : h >= 12 && h < 17 ? "afternoon" : h >= 17 && h < 21 ? "evening" : "night";
+  const g = (GREET[lang] || GREET.en)[part];
+  return lang === "hi" ? `${g}, मैं ${name} हूँ।` : `${g}, I'm ${name}.`;
+}
+
 // paper / leather grain, generated in code
 const NOISE = `url("data:image/svg+xml;utf8,${encodeURIComponent(
   "<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .5 0'/></filter><rect width='100%' height='100%' filter='url(#n)'/></svg>"
@@ -409,7 +421,7 @@ export default function Hero() {
             {t("independent")}
           </p>
           <h1 className="break-words pr-14 text-3xl font-bold leading-tight sm:text-4xl md:pr-0 md:text-5xl">
-            {t("hello")} {name}.
+                       {greetingLine(lang, name)}
           </h1>
           <p className="mt-2 text-lg opacity-70">{t("iam")}</p>
 
