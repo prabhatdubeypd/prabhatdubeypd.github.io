@@ -1155,8 +1155,13 @@ export default function Books() {
   const [wallH, setWallH] = useState(0);
   const [step, setStep] = useState(() => Math.round(window.innerHeight * 0.55)); // scroll distance per book
 
-  useEffect(() => {
-    const f = () => setStep(Math.round(window.innerHeight * 0.55));
+    useEffect(() => {
+    let w = window.innerWidth;
+    const f = () => {
+      if (window.innerWidth === w) return; // address bar showing / hiding only changes the height: ignore it
+      w = window.innerWidth;
+      setStep(Math.round(window.innerHeight * 0.55));
+    };
     window.addEventListener("resize", f);
     return () => window.removeEventListener("resize", f);
   }, []);
@@ -1179,18 +1184,36 @@ export default function Books() {
   const cur = categories.find((c) => c.id === focusId);
   const curIndex = categories.findIndex((c) => c.id === focusId) + 1;
 
-   useEffect(() => {
-    // lock the page the moment a book is clicked, so nothing can move under the animation
-    const html = document.documentElement;
-    if (phase !== "idle") {
+    useEffect(() => {
+    if (phase === "idle") return;
+
+    // desktop: hide the page scrollbar (the book reader has its own)
+    if (!phone) {
+      const html = document.documentElement;
       html.style.scrollbarGutter = "stable"; // keeps the page the same width when the scrollbar hides
       document.body.style.overflow = "hidden";
+      return () => {
+        html.style.scrollbarGutter = "";
+        document.body.style.overflow = "";
+      };
     }
+
+    // phones: lock the page WITHOUT touching overflow (that is what broke the sticky wall)
+    const y = window.scrollY;
+    const block = phase !== "inside"; // inside a book, the reader scrolls itself
+    const stop = (e) => { if (e.cancelable) e.preventDefault(); };
+    const keep = () => { if (Math.abs(window.scrollY - y) > 1) window.scrollTo(0, y); };
+    if (block) {
+      window.addEventListener("wheel", stop, { passive: false });
+      window.addEventListener("touchmove", stop, { passive: false });
+    }
+    window.addEventListener("scroll", keep, { passive: true });
     return () => {
-      html.style.scrollbarGutter = "";
-      document.body.style.overflow = "";
+      window.removeEventListener("wheel", stop);
+      window.removeEventListener("touchmove", stop);
+      window.removeEventListener("scroll", keep);
     };
-  }, [phase]);
+  }, [phase, phone]);
 
   // tell the navbar which book is open, so it can underline that book's name
   useEffect(() => {
