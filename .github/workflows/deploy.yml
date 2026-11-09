@@ -30,6 +30,7 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_GA_ID: ${{ secrets.VITE_GA_ID }}
           VITE_CLARITY_ID: ${{ secrets.VITE_CLARITY_ID }}
+          VITE_CAL_LINK: ${{ secrets.VITE_CAL_LINK }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

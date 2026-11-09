@@ -46,7 +46,7 @@ export default function Cta({ onSeeWork, dark = false }) {
               </svg>
             </span>
           </button>
-                    {onSeeWork ? (
+          {onSeeWork ? (
             <button
               type="button"
               onClick={onSeeWork}
@@ -62,6 +62,17 @@ export default function Cta({ onSeeWork, dark = false }) {
               {t("see_work")}
             </a>
           )}
+          <button
+            type="button"
+            data-book-call
+            className="flex h-12 items-center gap-2 rounded-full border border-white/20 px-6 text-sm font-medium text-white transition duration-300 hover:scale-105 hover:bg-white/10 active:scale-95"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="5" width="18" height="16" rx="2" />
+              <path d="M16 3v4M8 3v4M3 10h18" />
+            </svg>
+            {tr("book_call", "Book a 15-min call")}
+          </button>
         </div>
       </div>
     );
@@ -86,6 +97,9 @@ export default function Cta({ onSeeWork, dark = false }) {
         ) : (
           <a href="#projects" className={work}>{t("see_work")}</a>
         )}
+        <button type="button" data-book-call className={work}>
+          {tr("book_call", "Book a 15-min call")}
+        </button>
       </div>
     </div>
   );

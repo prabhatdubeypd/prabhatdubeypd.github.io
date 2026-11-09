@@ -247,10 +247,22 @@ export default function HireModal() {
                   </p>
                 )}
 
+                <p className="mt-4 text-center text-xs opacity-70">
+                  {L("Prefer to talk?", "बात करना चाहते हैं?")}{" "}
+                  <button
+                    type="button"
+                    data-book-call
+                    onClick={() => setOpen(false)}
+                    className="font-semibold underline"
+                  >
+                    {tr("book_call", L("Book a 15-min call", "15 मिनट की कॉल बुक करें"))}
+                  </button>
+                </p>
+
                 <button
                   type="submit"
                   disabled={status === "sending"}
-                  className="mt-6 w-full rounded-full bg-btn px-7 py-3.5 text-sm font-semibold text-btn-ink shadow-[0_10px_30px_rgba(0,0,0,.18)] transition duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60"
+                  className="mt-3 w-full rounded-full bg-btn px-7 py-3.5 text-sm font-semibold text-btn-ink shadow-[0_10px_30px_rgba(0,0,0,.18)] transition duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60"
                 >
                   {status === "sending" ? tr("hire_sending", "Sending…") : `${tr("hire_send", "Send message")} →`}
                 </button>
