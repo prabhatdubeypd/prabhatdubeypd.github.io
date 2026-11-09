@@ -10,6 +10,7 @@ import RoomScroll from "./components/RoomScroll";
 import PrivacyModal from "./components/PrivacyModal";
 import ConsentBanner from "./components/ConsentBanner";
 import MetaSync from "./components/MetaSync";
+import CodeGuard from "./components/CodeGuard";
 
 export default function App() {
   const { loading, error } = useData();
@@ -22,6 +23,7 @@ export default function App() {
       {!loading && (
         <>
         <MetaSync />
+        <CodeGuard />
           <HireModal />
           <PrivacyModal />
           <ConsentBanner />
