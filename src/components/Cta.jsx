@@ -1,5 +1,7 @@
 import { useData } from "../context/DataContext";
 import { track } from "../lib/analytics";
+import useWhatsApp from "../lib/useWhatsApp";
+import { SocialIcon } from "./SocialIcon";
 
 // "Need something built? Let's make it happen." -> ["Need something built?", "Let's make it happen."]
 const splitTitle = (s) => {
@@ -9,6 +11,7 @@ const splitTitle = (s) => {
 
 export default function Cta({ onSeeWork, dark = false }) {
   const { t } = useData();
+  const wa = useWhatsApp();
   const tr = (k, d) => {
     const v = t(k);
     return !v || v === k ? d : v;
@@ -17,6 +20,7 @@ export default function Cta({ onSeeWork, dark = false }) {
     track("hire_open");
     window.dispatchEvent(new CustomEvent("open-hire"));
   };
+  const openWa = () => window.dispatchEvent(new CustomEvent("open-whatsapp"));
 
   /* ---------- dark footer version (left aligned, like the reference) ---------- */
   if (dark) {
@@ -73,6 +77,16 @@ export default function Cta({ onSeeWork, dark = false }) {
             </svg>
             {tr("book_call", "Book a 15-min call")}
           </button>
+          {wa.number && (
+            <button
+              type="button"
+              onClick={openWa}
+              className="flex h-12 items-center gap-2 rounded-full border border-[#25D366]/50 px-6 text-sm font-medium text-[#6ee7a0] transition duration-300 hover:scale-105 hover:bg-[#25D366]/15 active:scale-95"
+            >
+              <SocialIcon k="whatsapp" size={16} />
+              {tr("wa_label", "WhatsApp")}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -100,6 +114,12 @@ export default function Cta({ onSeeWork, dark = false }) {
         <button type="button" data-book-call className={work}>
           {tr("book_call", "Book a 15-min call")}
         </button>
+        {wa.number && (
+          <button type="button" onClick={openWa} className={`${work} gap-2`}>
+            <SocialIcon k="whatsapp" size={16} />
+            {tr("wa_label", "WhatsApp")}
+          </button>
+        )}
       </div>
     </div>
   );

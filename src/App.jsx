@@ -11,6 +11,7 @@ import PrivacyModal from "./components/PrivacyModal";
 import ConsentBanner from "./components/ConsentBanner";
 import MetaSync from "./components/MetaSync";
 import CodeGuard from "./components/CodeGuard";
+import HireNudge from "./components/HireNudge";
 
 export default function App() {
   const { loading, error } = useData();
@@ -24,7 +25,7 @@ export default function App() {
         <>
         <MetaSync />
         <CodeGuard />
-          <HireModal />
+          <HireModal /><HireNudge />
           <PrivacyModal />
           <ConsentBanner />
           <RoomScroll />

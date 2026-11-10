@@ -6,6 +6,8 @@ import { useData } from "../context/DataContext";
 import { supabase } from "../lib/supabase";
 import { tx } from "../lib/i18n";
 import { track } from "../lib/analytics";
+import useWhatsApp from "../lib/useWhatsApp";
+import { SocialIcon } from "./SocialIcon";
 
 const EMPTY = { name: "", email: "", message: "", topic: "", budget: "", deadline: "", hp: "" };
 
@@ -26,11 +28,18 @@ const DEADLINES = [
 export default function HireModal() {
   const { lang } = useSettings();
   const { profile, categories, t } = useData();
+  const wa = useWhatsApp();
   const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState("idle"); // idle | sending | done | error
+  const [mode, setMode] = useState("form"); // form | wa
+  const [auto, setAuto] = useState(false); // opened by itself (after a book closed)
+  const [status, setStatus] = useState("idle"); // idle | sending | done | wa_done | error
   const [bad, setBad] = useState(false);
   const [f, setF] = useState(EMPTY);
+  const [waUrl, setWaUrl] = useState("");
   const firstRef = useRef(null);
+
+  const waOn = !!wa.number;
+  const m = waOn ? mode : "form";
 
   const tr = (k, d) => {
     const v = t(k);
@@ -38,15 +47,29 @@ export default function HireModal() {
   };
   const L = (en, hi) => (lang === "hi" ? hi : en);
 
-  // any "Hire me" button opens this
+  // any "Hire me" button opens the form, any WhatsApp button opens the WhatsApp tab
   useEffect(() => {
-    const h = () => {
+    const h = (e) => {
       setStatus("idle");
       setBad(false);
+      setAuto(!!e.detail?.auto);
+      setMode("form");
       setOpen(true);
     };
+    const w = () => {
+      setStatus("idle");
+      setBad(false);
+      setAuto(false);
+      setMode("wa");
+      setOpen(true);
+      track("whatsapp_open");
+    };
     window.addEventListener("open-hire", h);
-    return () => window.removeEventListener("open-hire", h);
+    window.addEventListener("open-whatsapp", w);
+    return () => {
+      window.removeEventListener("open-hire", h);
+      window.removeEventListener("open-whatsapp", w);
+    };
   }, []);
 
   useEffect(() => {
@@ -70,12 +93,54 @@ export default function HireModal() {
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
   const pick = (k, v) => setF((s) => ({ ...s, [k]: s[k] === v ? "" : v }));
 
+  // the message that arrives on WhatsApp (always in English, bold labels)
+  const buildWa = (name, email, message) => {
+    const owner = (profile?.name?.en || profile?.name?.hi || "").split(" ")[0] || "there";
+    const lines = [
+      wa.intro || `Hi ${owner}! 👋 I found your portfolio and I'd like to work with you.`,
+      "",
+      `*Name:* ${name}`,
+      email ? `*Email:* ${email}` : null,
+      f.topic ? `*I need:* ${f.topic}` : null,
+      f.budget ? `*Budget:* ${f.budget}` : null,
+      f.deadline ? `*Deadline:* ${f.deadline}` : null,
+      "",
+      "*About the project:*",
+      message.slice(0, 1200),
+      "",
+      `— sent from ${window.location.host}`,
+    ].filter((x) => x !== null);
+    return `https://wa.me/${wa.number}?text=${encodeURIComponent(lines.join("\n"))}`;
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     if (status === "sending") return;
     const name = f.name.trim();
     const email = f.email.trim();
     const message = f.message.trim();
+
+    /* ---------- WhatsApp: open WhatsApp with the message ready ---------- */
+    if (m === "wa") {
+      const okEmail = !email || /^\S+@\S+\.\S+$/.test(email);
+      if (!name || message.length < 5 || !okEmail) {
+        setBad(true);
+        return;
+      }
+      setBad(false);
+      if (f.hp) { setStatus("done"); return; } // a bot filled the hidden field
+      const url = buildWa(name, email, message);
+      setWaUrl(url);
+      track("whatsapp_send", { topic: f.topic || "none", budget: f.budget || "none", deadline: f.deadline || "none" });
+      const w = window.open(url, "_blank");
+      if (w) w.opener = null;
+      else window.location.href = url; // pop-up blocked: open in this tab
+      setStatus("wa_done");
+      setF(EMPTY);
+      return;
+    }
+
+    /* ---------- Email form: saved in Supabase ---------- */
     if (!name || !/^\S+@\S+\.\S+$/.test(email) || message.length < 5) {
       setBad(true);
       return;
@@ -102,6 +167,12 @@ export default function HireModal() {
     setF(EMPTY);
   };
 
+  // "Don't show this again": silences the automatic pop-up and the banner for 7 days
+  const dontShow = () => {
+    try { localStorage.setItem("nudge_off", String(Date.now() + 7 * 864e5)); } catch { /* ignore */ }
+    setOpen(false);
+  };
+
   const mailto = `mailto:${profile?.email || ""}?subject=${encodeURIComponent("Project enquiry")}&body=${encodeURIComponent(
     `${f.message}\n\n— ${f.name} ${f.email}`
   )}`;
@@ -111,12 +182,18 @@ export default function HireModal() {
   const label = "mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.2em] opacity-60";
   const chip = (on) =>
     `rounded-full border px-3.5 py-1.5 text-xs transition ${on ? "border-transparent bg-btn text-btn-ink" : "border-line hover:bg-ink/5"}`;
+  const tab = (on) =>
+    `inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-medium transition ${on ? "bg-btn text-btn-ink" : "opacity-70 hover:opacity-100"}`;
+
+  const finished = status === "done" || status === "wa_done";
+  const isWaDone = status === "wa_done";
 
   return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
           key="hire"
+          data-hire-modal
           className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -143,7 +220,7 @@ export default function HireModal() {
               ✕
             </button>
 
-            {status === "done" ? (
+            {finished ? (
               <div className="py-8 text-center">
                 <motion.svg
                   width="64" height="64" viewBox="0 0 64 64" fill="none" className="mx-auto"
@@ -160,22 +237,60 @@ export default function HireModal() {
                     transition={{ duration: 0.6, delay: 0.2 }}
                   />
                 </motion.svg>
-                <h3 className="mt-5 font-serif text-3xl font-bold">{tr("hire_thanks_title", L("Message sent", "संदेश भेज दिया"))}</h3>
+                <h3 className="mt-5 font-serif text-3xl font-bold">
+                  {isWaDone
+                    ? tr("wa_done_title", "WhatsApp is opening")
+                    : tr("hire_thanks_title", L("Message sent", "संदेश भेज दिया"))}
+                </h3>
                 <p className="mx-auto mt-3 max-w-sm text-sm opacity-70">
-                  {tr("hire_thanks_body", L("Got it! I'll reply to your email within a day.", "मिल गया! मैं एक दिन के भीतर आपके ईमेल पर जवाब दूँगा।"))}
+                  {isWaDone
+                    ? tr("wa_done_body", "Press send in WhatsApp to deliver your message to me.")
+                    : tr("hire_thanks_body", L("Got it! I'll reply to your email within a day.", "मिल गया! मैं एक दिन के भीतर आपके ईमेल पर जवाब दूँगा।"))}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="mt-7 rounded-full bg-btn px-7 py-3 text-sm font-semibold text-btn-ink transition hover:scale-105"
-                >
-                  {tr("hire_close", "Close")}
-                </button>
+                <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+                  {isWaDone && waUrl && (
+                    <a
+                      href={waUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 rounded-full bg-[#25D366] px-6 py-3 text-sm font-semibold text-[#052e16] transition hover:scale-105"
+                    >
+                      <SocialIcon k="whatsapp" size={16} />
+                      {tr("wa_again", "Open WhatsApp again")}
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="rounded-full bg-btn px-7 py-3 text-sm font-semibold text-btn-ink transition hover:scale-105"
+                  >
+                    {tr("hire_close", "Close")}
+                  </button>
+                </div>
               </div>
             ) : (
               <form onSubmit={submit} noValidate>
-                <h3 className="pr-10 font-serif text-3xl font-bold leading-tight">{tr("hire_title", "Let's build something together")}</h3>
-                <p className="mt-2 text-sm opacity-70">{tr("hire_sub", "Tell me what you need and I'll get back to you.")}</p>
+                {/* switch between the email form and WhatsApp */}
+                {waOn && (
+                  <div className="mb-5 mr-10 inline-flex rounded-full border border-line p-1 text-xs">
+                    <button type="button" onClick={() => setMode("form")} className={tab(m === "form")}>
+                      {tr("hire_tab_form", L("Email form", "ईमेल फ़ॉर्म"))}
+                    </button>
+                    <button type="button" onClick={() => setMode("wa")} className={tab(m === "wa")}>
+                      <SocialIcon k="whatsapp" size={13} />
+                      {tr("hire_tab_wa", "WhatsApp")}
+                    </button>
+                  </div>
+                )}
+
+                <h3 className="pr-10 font-serif text-3xl font-bold leading-tight">
+                  {m === "wa" ? tr("wa_title", "Message me on WhatsApp") : tr("hire_title", "Let's build something together")}
+                </h3>
+                <p className="mt-2 text-sm opacity-70">
+                  {m === "wa"
+                    ? tr("wa_sub", "Fill this in and WhatsApp opens with your message ready to send.")
+                    : tr("hire_sub", "Tell me what you need and I'll get back to you.")}
+                </p>
 
                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
                   <div>
@@ -183,7 +298,9 @@ export default function HireModal() {
                     <input ref={firstRef} className={input} value={f.name} onChange={set("name")} maxLength={120} autoComplete="name" />
                   </div>
                   <div>
-                    <label className={label}>{tr("hire_email", "Your email")}</label>
+                    <label className={label}>
+                      {m === "wa" ? tr("wa_email_opt", "Your email (optional)") : tr("hire_email", "Your email")}
+                    </label>
                     <input className={input} type="email" value={f.email} onChange={set("email")} maxLength={200} autoComplete="email" />
                   </div>
                 </div>
@@ -224,7 +341,13 @@ export default function HireModal() {
 
                 <div className="mt-4">
                   <label className={label}>{tr("hire_message", "Tell me about your project")}</label>
-                  <textarea className={`${input} resize-none`} rows={4} value={f.message} onChange={set("message")} maxLength={3000} />
+                  <textarea
+                    className={`${input} resize-none`}
+                    rows={4}
+                    value={f.message}
+                    onChange={set("message")}
+                    maxLength={m === "wa" ? 1200 : 3000}
+                  />
                 </div>
 
                 {/* hidden field: only bots fill this */}
@@ -238,7 +361,7 @@ export default function HireModal() {
                 />
 
                 {bad && <p className="mt-3 text-sm text-red-500">{tr("hire_invalid", "Please add your name, a valid email and a short message.")}</p>}
-                {status === "error" && (
+                {status === "error" && m === "form" && (
                   <p className="mt-3 text-sm text-red-500">
                     {tr("hire_error", "Could not send right now.")}{" "}
                     <a href={mailto} className="font-semibold underline">
@@ -259,13 +382,37 @@ export default function HireModal() {
                   </button>
                 </p>
 
-                <button
-                  type="submit"
-                  disabled={status === "sending"}
-                  className="mt-3 w-full rounded-full bg-btn px-7 py-3.5 text-sm font-semibold text-btn-ink shadow-[0_10px_30px_rgba(0,0,0,.18)] transition duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60"
-                >
-                  {status === "sending" ? tr("hire_sending", "Sending…") : `${tr("hire_send", "Send message")} →`}
-                </button>
+                {m === "wa" ? (
+                  <button
+                    type="submit"
+                    className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#25D366] px-7 py-3.5 text-sm font-semibold text-[#052e16] shadow-[0_10px_30px_rgba(37,211,102,.25)] transition duration-300 hover:scale-[1.02] active:scale-95"
+                  >
+                    <SocialIcon k="whatsapp" size={18} />
+                    {tr("wa_send", "Open WhatsApp")} →
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={status === "sending"}
+                    className="mt-3 w-full rounded-full bg-btn px-7 py-3.5 text-sm font-semibold text-btn-ink shadow-[0_10px_30px_rgba(0,0,0,.18)] transition duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-60"
+                  >
+                    {status === "sending" ? tr("hire_sending", "Sending…") : `${tr("hire_send", "Send message")} →`}
+                  </button>
+                )}
+
+                {m === "wa" && (
+                  <p className="mt-3 text-center text-xs opacity-60">
+                    {tr("wa_note", "WhatsApp opens with your message ready. Just press send.")}
+                  </p>
+                )}
+
+                {auto && (
+                  <p className="mt-4 text-center">
+                    <button type="button" onClick={dontShow} className="text-xs opacity-60 underline transition hover:opacity-100">
+                      {tr("nudge_off", "Don't show this again")}
+                    </button>
+                  </p>
+                )}
               </form>
             )}
           </motion.div>

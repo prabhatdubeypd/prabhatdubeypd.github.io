@@ -4,6 +4,7 @@ import { useSettings } from "../context/SettingsContext";
 import { useData } from "../context/DataContext";
 import { tx } from "../lib/i18n";
 import useSocials from "../lib/useSocials";
+import useWhatsApp from "../lib/useWhatsApp";
 import { MailIcon, SocialIcon } from "./SocialIcon";
 import Cta from "./Cta";
 
@@ -28,6 +29,7 @@ export default function Footer() {
   const { lang } = useSettings();
   const { profile, categories, t } = useData();
   const { links, resume } = useSocials();
+  const wa = useWhatsApp();
   const time = useLocalTime(lang);
   const ref = useRef(null);
 
@@ -101,6 +103,17 @@ export default function Footer() {
               <a href={`mailto:${profile.email}`} aria-label={tr("mail", "Email")} title={tr("mail", "Email")} className={icon}>
                 <MailIcon />
               </a>
+              {wa.number && (
+                <button
+                  type="button"
+                  onClick={fire("open-whatsapp")}
+                  aria-label="WhatsApp"
+                  title="WhatsApp"
+                  className={icon}
+                >
+                  <SocialIcon k="whatsapp" />
+                </button>
+              )}
               {all.map((l) => {
                 const name = tx(l.label, lang) || l.key;
                 return (
@@ -122,7 +135,7 @@ export default function Footer() {
               </a>
             )}
 
-                        <InstallApp className="mt-3" />
+            <InstallApp className="mt-3" />
           </div>
 
           <div>
