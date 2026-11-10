@@ -13,8 +13,8 @@ import { useData } from "../context/DataContext";
 import { supabase } from "../lib/supabase";
 import { tx } from "../lib/i18n";
 
-const CW = 330; // card size
-const CH = 470;
+export const CW = 320; // card size
+export const CH = 450;
 const CX = CW / 2; // centre of the medallion
 const CY = 238;
 const GOLD = "linear-gradient(180deg,#fff3bf 0%,#f0cb62 30%,#b8862b 58%,#f6dc8c 80%,#c9972f 100%)";
@@ -589,6 +589,17 @@ function drawBack(ctx, o) {
   ctx.lineWidth = 1;
   ctx.stroke();
   ctx.restore();
+}
+
+// the card front as an image (used by the games)
+export function frontToDataUrl(o, scale = 2) {
+  const cv = document.createElement("canvas");
+  cv.width = CW * scale;
+  cv.height = CH * scale;
+  const ctx = cv.getContext("2d");
+  ctx.scale(scale, scale);
+  drawFront(ctx, o);
+  return cv.toDataURL("image/png");
 }
 
 // front + back side by side on a dark background -> PNG

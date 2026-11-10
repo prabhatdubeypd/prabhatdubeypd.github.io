@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useData } from "../context/DataContext";
 import { useSettings } from "../context/SettingsContext";
 import KingCard from "./KingCard";
+import KingGames from "./KingGames";
 
 const S = 1.4; // size of the pull-cord (bigger number = bigger)
 const SW = 46; // scene width and height (in unscaled px)
@@ -347,7 +348,8 @@ export default function Bell() {
       <div ref={slotRef} className="ml-2 h-7 w-[34px] shrink-0" aria-hidden="true" />
       {cord && createPortal(cord, document.body)}
       {/* the King of Spades overlay (opened by the card icon in the navbar) */}
-      <KingCard />
+            <KingCard />
+      <KingGames />
     </>
   );
 }

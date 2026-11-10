@@ -100,13 +100,14 @@ export default function Navbar() {
     setMenu(false);
   };
 
-  // the card icon brings out the King card from the icon itself
+  
+    // the card icon opens the games (or the card directly if the games are switched off in Supabase)
   const summonCard = () => {
     const r = cardRef.current?.getBoundingClientRect();
     if (!r) return;
-    window.dispatchEvent(
-      new CustomEvent("open-king-card", { detail: { x: r.left + r.width / 2, y: r.bottom } })
-    );
+    const detail = { x: r.left + r.width / 2, y: r.bottom };
+    const games = features.kingGames !== false;
+    window.dispatchEvent(new CustomEvent(games ? "open-king-games" : "open-king-card", { detail }));
   };
 
   return (
