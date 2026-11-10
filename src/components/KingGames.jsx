@@ -34,6 +34,15 @@ const TXT = {
     won: "You won!", wonSub: "The King is yours", openCard: "Open the card",
     gridWord: "grid", cardsWord: "cards", slow: "slow", fast: "fast", veryFast: "very fast", decoy: "decoy King",
     dealerCareless: "Careless dealer", dealerNormal: "Normal dealer", dealerSmart: "Smart dealer",
+    fire: "Fire", water: "Water", grass: "Grass", surge: "Surge", guard: "Guard",
+    surgeHint: "Double damage and wins ties", guardHint: "Take half damage this round",
+    pickElement: "Choose your element", tieRound: "Clash cancelled", youDefeated: "You were defeated",
+    rival: "Rival", rivalCareless: "Careless rival", rivalNormal: "Normal rival", rivalSmart: "Smart rival",
+    legend: "Fire beats Grass · Grass beats Water · Water beats Fire",
+    yourTurn: "Your turn", rivalTurn: "Rival is thinking…", boxesWord: "boxes", boxHint: "Complete a box to go again",
+    draw: "It's a draw", rivalWins: "Rival wins",
+    pairsWord: "pairs", missesWord: "misses", pairs: "Pairs", missesLeft: "Misses left",
+    memorizeCards: "Memorize the cards…", findPairs: "Find the pairs", outOfMisses: "Out of misses",
   },
   hi: {
     brand: "यूटिलिटी कार्ड · गेम", hubTitle: "किंग जीतो", hubSub: "कोई भी गेम जीतकर मेरा कार्ड खोलें",
@@ -47,7 +56,19 @@ const TXT = {
     won: "आप जीत गए!", wonSub: "किंग अब आपका है", openCard: "कार्ड खोलें",
     gridWord: "ग्रिड", cardsWord: "कार्ड", slow: "धीमा", fast: "तेज़", veryFast: "बहुत तेज़", decoy: "नकली किंग",
     dealerCareless: "लापरवाह डीलर", dealerNormal: "सामान्य डीलर", dealerSmart: "चतुर डीलर",
+        fire: "आग", water: "पानी", grass: "घास", surge: "सर्ज", guard: "गार्ड",
+    surgeHint: "दोगुना नुकसान, बराबरी पर भी जीत", guardHint: "इस राउंड में आधा नुकसान",
+    pickElement: "अपना तत्व चुनें", tieRound: "टक्कर बराबर", youDefeated: "आप हार गए",
+    rival: "रिवाल", rivalCareless: "लापरवाह रिवाल", rivalNormal: "सामान्य रिवाल", rivalSmart: "चतुर रिवाल",
+    legend: "आग > घास · घास > पानी · पानी > आग",
+    yourTurn: "आपकी बारी", rivalTurn: "रिवाल सोच रहा है…", boxesWord: "बॉक्स", boxHint: "बॉक्स पूरा करें तो फिर चाल मिलेगी",
+    draw: "बराबरी", rivalWins: "रिवाल जीता",
+    pairsWord: "जोड़ियाँ", missesWord: "मिस", pairs: "जोड़ियाँ", missesLeft: "बचे मिस",
+    memorizeCards: "कार्ड याद करें…", findPairs: "जोड़ियाँ ढूँढें", outOfMisses: "मिस खत्म",
+        
   },
+
+
 };
 
 /* ---------- defaults (Supabase table `games` overrides these) ---------- */
@@ -74,6 +95,36 @@ const DEFAULTS = {
     desc: { en: "Get closer to 21 than the dealer without going over.", hi: "बिना 21 पार किए डीलर से 21 के करीब पहुँचें।" },
     levels: { easy: { dealer: "careless" }, medium: { dealer: "normal" }, hard: { dealer: "smart" } },
   },
+    elements: {
+    enabled: true, sort: 4,
+    title: { en: "Element Duel", hi: "एलिमेंट ड्यूल" },
+    desc: { en: "Fire, Water, Grass: outsmart the rival and drain its HP.", hi: "आग, पानी, घास: रिवाल को मात देकर उसका HP खत्म करें।" },
+    levels: {
+      easy: { hp: 10, aiHp: 8, dmg: 2, smart: 0.15 },
+      medium: { hp: 10, aiHp: 10, dmg: 2, smart: 0.5 },
+      hard: { hp: 10, aiHp: 12, dmg: 2, smart: 0.85 },
+    },
+  },
+  dots: {
+    enabled: true, sort: 5,
+    title: { en: "Dots and Boxes", hi: "डॉट्स और बॉक्स" },
+    desc: { en: "Draw lines, close boxes, and claim more than the rival.", hi: "लकीरें खींचें, बॉक्स बंद करें और रिवाल से ज़्यादा बॉक्स जीतें।" },
+    levels: {
+      easy: { rows: 3, cols: 3, ai: "careless" },
+      medium: { rows: 4, cols: 4, ai: "normal" },
+      hard: { rows: 5, cols: 5, ai: "smart" },
+    },
+  },
+  memory: {
+    enabled: true, sort: 6,
+    title: { en: "Match the Pairs", hi: "जोड़ियाँ मिलाओ" },
+    desc: { en: "Flip the cards and match every pair before you run out of misses.", hi: "कार्ड पलटें और मिस खत्म होने से पहले सारी जोड़ियाँ मिलाएँ।" },
+    levels: {
+      easy: { cols: 4, rows: 3, maxMisses: 0, previewMs: 2200 },
+      medium: { cols: 4, rows: 4, maxMisses: 10, previewMs: 1800 },
+      hard: { cols: 5, rows: 4, maxMisses: 8, previewMs: 1500 },
+    },
+  },
 };
 
 function mergeCfg(rows) {
@@ -97,6 +148,19 @@ function levelInfo(game, lv, T) {
     const ms = num(lv.swapMs, 500, 120, 1500);
     const sp = ms >= 480 ? T.slow : ms >= 330 ? T.fast : T.veryFast;
     return `${num(lv.cards, 3, 3, 6)} ${T.cardsWord} · ${sp}${lv.decoy ? " · " + T.decoy : ""}`;
+  }
+  if (game === "elements") {
+    const s = num(lv.smart, 0.5, 0, 1);
+    return `${num(lv.hp, 10, 3, 40)} HP · ${s < 0.3 ? T.rivalCareless : s < 0.7 ? T.rivalNormal : T.rivalSmart}`;
+  }
+  if (game === "dots") {
+    const r = { careless: T.rivalCareless, normal: T.rivalNormal, smart: T.rivalSmart }[lv.ai] || T.rivalNormal;
+    return `${num(lv.rows, 3, 2, 6)} × ${num(lv.cols, 3, 2, 6)} ${T.boxesWord} · ${r}`;
+  }
+  if (game === "memory") {
+    const p = Math.floor((num(lv.cols, 4, 2, 6) * num(lv.rows, 3, 2, 6)) / 2);
+    const m = num(lv.maxMisses, 0, 0, 99);
+    return `${p} ${T.pairsWord}${m ? ` · ${m} ${T.missesWord}` : ""}`;
   }
   return { careless: T.dealerCareless, normal: T.dealerNormal, smart: T.dealerSmart }[lv.dealer] || T.dealerNormal;
 }
@@ -791,6 +855,634 @@ function Blackjack({ cfg, T, onWin, onExit }) {
   );
 }
 
+/* a game that can be restarted without leaving the level */
+function Retryable({ Game, ...props }) {
+  const [run, setRun] = useState(0);
+  return <Game key={run} {...props} again={() => setRun((r) => r + 1)} />;
+}
+
+/* =====================  GAME 4: ELEMENT DUEL  ===================== */
+const ELS = ["fire", "water", "grass"];
+const BEATS = { fire: "grass", grass: "water", water: "fire" };
+const COUNTER = { fire: "water", grass: "fire", water: "grass" }; // what beats the key
+const EL_COL = { fire: "#ff7a3d", water: "#4aa8ff", grass: "#58d068" };
+
+function Glyph({ el }) {
+  if (el === "fire")
+    return (
+      <g>
+        <path d="M32 4 C35 17 49 23 49 39 C49 51 41 60 32 60 C23 60 15 51 15 39 C15 31 19 26 24 21 C24 29 28 33 31 30 C35 24 29 14 32 4 Z" fill="url(#kg-fire)" />
+        <path d="M32 30 C34 38 40 41 40 48 C40 54 36 57 32 57 C28 57 24 54 24 48 C24 42 29 40 32 30 Z" fill="#ffe9a8" opacity=".85" />
+      </g>
+    );
+  if (el === "water")
+    return (
+      <g>
+        <path d="M32 4 C32 4 14 26 14 40 C14 51 22 60 32 60 C42 60 50 51 50 40 C50 26 32 4 32 4 Z" fill="url(#kg-water)" />
+        <path d="M23 40 C23 46 27 51 32 52" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" opacity=".7" />
+      </g>
+    );
+  return (
+    <g>
+      <path d="M8 56 C8 28 28 8 56 8 C56 38 36 56 8 56 Z" fill="url(#kg-grass)" />
+      <path d="M10 54 L40 24" stroke="#0e3b1b" strokeWidth="2.2" strokeLinecap="round" opacity=".6" />
+    </g>
+  );
+}
+
+function Orb({ el, size = 80, hot, hidden }) {
+  const col = hidden ? "#c9972f" : EL_COL[el];
+  return (
+    <div
+      style={{
+        width: size, height: size, borderRadius: "50%", position: "relative", display: "grid", placeItems: "center",
+        background: "radial-gradient(circle at 34% 28%, rgba(255,255,255,.28), rgba(255,255,255,0) 46%), linear-gradient(150deg,#302a20,#0b0a08)",
+        boxShadow: `inset 0 0 0 2px ${col}, inset 0 0 18px ${col}55, 0 0 ${hot ? 40 : 14}px ${col}${hot ? "cc" : "66"}, 0 12px 22px rgba(0,0,0,.5)`,
+      }}
+    >
+      {hidden ? (
+        <b className="font-serif" style={{ ...goldText, fontSize: size * 0.5 }}>?</b>
+      ) : (
+        <svg viewBox="0 0 64 64" width={size * 0.6} height={size * 0.6}><Glyph el={el} /></svg>
+      )}
+    </div>
+  );
+}
+
+function predictNext(h) {
+  for (let k = Math.min(3, h.length - 1); k >= 1; k--) {
+    const ctx = h.slice(-k).join();
+    const cnt = {};
+    for (let i = 0; i + k < h.length; i++) {
+      if (h.slice(i, i + k).join() === ctx) cnt[h[i + k]] = (cnt[h[i + k]] || 0) + 1;
+    }
+    const best = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
+    if (best) return best[0];
+  }
+  if (!h.length) return null;
+  const f = {};
+  h.forEach((x) => { f[x] = (f[x] || 0) + 1; });
+  return Object.entries(f).sort((a, b) => b[1] - a[1])[0][0];
+}
+
+function HpBar({ name, hp, max, en, hitKey }) {
+  const pct = Math.max(0, Math.min(100, (hp / max) * 100));
+  const col =
+    pct > 55 ? "linear-gradient(90deg,#3fbf5a,#8ae27a)" : pct > 28 ? "linear-gradient(90deg,#d9a933,#f6dc8c)" : "linear-gradient(90deg,#d6403a,#ff8a6a)";
+  return (
+    <motion.div
+      key={hitKey}
+      initial={{ x: 0 }}
+      animate={hitKey ? { x: [0, -8, 8, -5, 5, 0] } : { x: 0 }}
+      transition={{ duration: 0.45 }}
+      className="rounded-2xl px-3 py-2"
+      style={{ background: "linear-gradient(160deg, rgba(48,42,32,.92), rgba(16,13,9,.96))", boxShadow: "inset 0 0 0 1px rgba(240,203,98,.4)" }}
+    >
+      <div className="flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.18em]">
+        <span style={{ color: "#c9972f" }}>{name}</span>
+        <span className="flex gap-1">
+          {[0, 1, 2].map((i) => (
+            <i key={i} style={{ width: 8, height: 8, transform: "rotate(45deg)", background: i < en ? GOLD : "rgba(240,203,98,.2)", boxShadow: en >= 3 ? "0 0 8px rgba(240,203,98,.9)" : "none" }} />
+          ))}
+        </span>
+        <b>{hp}/{max}</b>
+      </div>
+      <div className="mt-1.5 h-2.5 overflow-hidden rounded-full" style={{ background: "rgba(0,0,0,.5)", boxShadow: "inset 0 0 0 1px rgba(240,203,98,.25)" }}>
+        <motion.div initial={false} animate={{ width: `${pct}%` }} transition={{ type: "spring", stiffness: 90, damping: 18 }} style={{ height: "100%", background: col }} />
+      </div>
+    </motion.div>
+  );
+}
+
+function ArenaOrb({ side, el, hidden, pose, badge, hot }) {
+  const sign = side === "p" ? 1 : -1;
+  return (
+    <div style={{ position: "absolute", left: "50%", top: "50%", marginLeft: -38, marginTop: -38, perspective: 600 }}>
+      <motion.div
+        initial={{ y: sign * 130, opacity: 0, scale: 0.6 }}
+        animate={pose.animate} transition={pose.tr}
+        style={{ position: "relative" }}
+      >
+        <motion.div key={hidden ? "q" : el} initial={{ rotateY: 90 }} animate={{ rotateY: 0 }} transition={{ duration: 0.35 }}>
+          <Orb el={el || "fire"} size={76} hidden={hidden} hot={hot} />
+        </motion.div>
+        {badge && (
+          <span
+            className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold"
+            style={{ top: side === "p" ? 84 : -24, background: GOLD, color: "#3b2506" }}
+          >
+            {badge}
+          </span>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
+function Elements({ cfg, T, onWin, onExit, again }) {
+  const maxP = num(cfg.hp, 10, 3, 40);
+  const maxA = num(cfg.aiHp, maxP, 3, 60);
+  const dmg = num(cfg.dmg, 2, 1, 10);
+  const smart = num(cfg.smart, 0.5, 0, 1);
+  const [pHp, setPHp] = useState(maxP);
+  const [aHp, setAHp] = useState(maxA);
+  const [pEn, setPEn] = useState(0);
+  const [aEn, setAEn] = useState(0);
+  const [special, setSpecial] = useState(null); // null | surge | guard
+  const [phase, setPhase] = useState("pick"); // pick | clash | won | lost
+  const [stage, setStage] = useState("idle"); // idle | in | reveal | hit
+  const [pEl, setPEl] = useState(null);
+  const [aEl, setAEl] = useState(null);
+  const [fx, setFx] = useState({ win: null, ps: false, as: false, pg: false, ag: false, amount: 0 });
+  const [pHit, setPHit] = useState(0);
+  const [aHit, setAHit] = useState(0);
+  const [round, setRound] = useState(1);
+  const hist = useRef([]);
+  const token = useRef(0);
+  useEffect(() => () => { token.current += 1; }, []);
+
+  const play = async (el) => {
+    if (phase !== "pick") return;
+    const my = token.current;
+    const nap = async (ms) => { await sleep(ms); if (token.current !== my) throw STOP; };
+    const rnd = (n) => Math.floor(Math.random() * n);
+    const ps = special === "surge" && pEn >= 3;
+    const pg = special === "guard" && pEn >= 2;
+
+    // the rival studies your last moves (up to 3) and counters the one it expects
+    const pred = predictNext(hist.current);
+    const ael = pred && Math.random() < smart ? COUNTER[pred] : ELS[rnd(3)];
+    let as = false, ag = false;
+    if (aEn >= 3 && Math.random() < 0.35 + smart * 0.5) as = true;
+    else if (aEn >= 2 && aHp <= dmg * 2 && Math.random() < smart) ag = true;
+    hist.current = [...hist.current, el];
+
+    let win = "tie";
+    if (el === ael) { if (ps && !as) win = "p"; else if (as && !ps) win = "a"; }
+    else win = BEATS[el] === ael ? "p" : "a";
+    let amount = 0;
+    if (win !== "tie") {
+      const surged = win === "p" ? ps : as;
+      const guarded = win === "p" ? ag : pg;
+      amount = dmg * (surged ? 2 : 1);
+      if (guarded) amount = Math.ceil(amount / 2);
+    }
+    const nPEn = Math.min(3, pEn - (ps ? 3 : pg ? 2 : 0) + 1);
+    const nAEn = Math.min(3, aEn - (as ? 3 : ag ? 2 : 0) + 1);
+    const nAHp = win === "p" ? Math.max(0, aHp - amount) : aHp;
+    const nPHp = win === "a" ? Math.max(0, pHp - amount) : pHp;
+
+    try {
+      setPhase("clash"); setSpecial(null); setPEl(el); setAEl(null);
+      setFx({ win: null, ps, as: false, pg, ag: false, amount: 0 });
+      setStage("in");
+      await nap(520);
+      setAEl(ael);
+      setFx({ win: null, ps, as, pg, ag, amount: 0 });
+      setStage("reveal");
+      await nap(750);
+      setStage("hit");
+      setFx({ win, ps, as, pg, ag, amount });
+      await nap(450);
+      setPHp(nPHp); setAHp(nAHp); setPEn(nPEn); setAEn(nAEn);
+      if (win === "p") setAHit((h) => h + 1);
+      if (win === "a") setPHit((h) => h + 1);
+      await nap(1200);
+      if (nAHp <= 0) { setPhase("won"); await nap(900); onWin(); return; }
+      if (nPHp <= 0) { setPhase("lost"); return; }
+      setStage("idle"); setPEl(null); setAEl(null); setRound((r) => r + 1); setPhase("pick");
+    } catch (e) {
+      if (e !== STOP) console.error(e);
+    }
+  };
+
+  const pose = (side) => {
+    const sign = side === "p" ? 1 : -1;
+    if (stage === "idle") return { animate: { y: sign * 130, x: 0, opacity: 0, scale: 0.6, rotateY: 0, rotateZ: 0 }, tr: { duration: 0.35 } };
+    if (stage === "in" || stage === "reveal")
+      return { animate: { y: sign * 64, x: 0, opacity: 1, scale: stage === "reveal" ? 1.06 : 1, rotateY: 0, rotateZ: 0 }, tr: { type: "spring", stiffness: 130, damping: 15 } };
+    if (fx.win === "tie") return { animate: { y: sign * 24, x: 0, opacity: 1, scale: 1, rotateY: 360, rotateZ: 0 }, tr: { duration: 0.6 } };
+    if (fx.win === side)
+      return { animate: { y: [sign * 64, sign * 8, sign * 8], x: 0, opacity: 1, scale: [1, 1.4, 1.2], rotateY: 360, rotateZ: 0 }, tr: { duration: 0.7, times: [0, 0.5, 1] } };
+    return {
+      animate: { y: [sign * 64, sign * 8, sign * 8], x: [0, 0, -sign * 70], opacity: [1, 1, 0.2], scale: [1, 1.1, 0.7], rotateY: 0, rotateZ: [0, 0, -sign * 40] },
+      tr: { duration: 0.8, times: [0, 0.45, 1] },
+    };
+  };
+
+  let status = T.pickElement;
+  if (phase === "clash") {
+    if (stage === "in") status = "…";
+    else if (stage === "reveal") status = `${T[pEl]} vs ${T[aEl]}`;
+    else status = fx.win === "tie" ? T.tieRound : fx.win === "p" ? `${T.you}: −${fx.amount}` : `${T.rival}: −${fx.amount}`;
+  }
+  if (phase === "won") status = T.youWin;
+  if (phase === "lost") status = T.youDefeated;
+
+  const spec = (id, icon, label, cost) => {
+    const ok = phase === "pick" && (id === "surge" ? pEn >= 3 : pEn >= 2);
+    const on = special === id;
+    return (
+      <motion.button
+        key={id} type="button" disabled={!ok} onClick={() => setSpecial(on ? null : id)}
+        whileTap={ok ? { scale: 0.95 } : undefined}
+        className="rounded-full px-4 py-2 text-[11px] font-semibold"
+        style={on ? { background: GOLD, color: "#3b2506", boxShadow: "0 0 20px rgba(240,203,98,.7)" } : { color: "#efe8d6", ...chipStyle, opacity: ok ? 1 : 0.4 }}
+      >
+        {icon} {label} · {cost}
+      </motion.button>
+    );
+  };
+
+  return (
+    <div className="w-full">
+      <HpBar name={T.rival} hp={aHp} max={maxA} en={aEn} hitKey={aHit} />
+
+      <div className="relative mx-auto my-1" style={{ height: 210 }}>
+        <ArenaOrb side="a" el={aEl} hidden={!aEl} pose={pose("a")} badge={fx.as ? `⚡ ${T.surge}` : fx.ag ? `🛡 ${T.guard}` : null} hot={stage === "hit" && fx.win === "a"} />
+        <ArenaOrb side="p" el={pEl} pose={pose("p")} badge={fx.ps ? `⚡ ${T.surge}` : fx.pg ? `🛡 ${T.guard}` : null} hot={stage === "hit" && fx.win === "p"} />
+        {stage === "hit" && (
+          <motion.div
+            key={`burst${round}`} initial={{ scale: 0.2, opacity: 0.95 }} animate={{ scale: 3.4, opacity: 0 }} transition={{ duration: 0.7, ease: "easeOut" }}
+            style={{ position: "absolute", left: "50%", top: "50%", width: 80, height: 80, marginLeft: -40, marginTop: -40, borderRadius: "50%", border: "3px solid #f6dc8c", boxShadow: "0 0 30px rgba(240,203,98,.9)", pointerEvents: "none" }}
+          />
+        )}
+      </div>
+
+      <HpBar name={T.you} hp={pHp} max={maxP} en={pEn} hitKey={pHit} />
+
+      <p className="mt-3 min-h-[24px] text-center font-serif text-lg font-bold" style={goldText}>{status}</p>
+
+      {phase === "lost" ? (
+        <div className="mt-2 flex flex-wrap justify-center gap-2">
+          <Pill gold onClick={again}>{T.tryAgain}</Pill>
+          <Pill onClick={onExit}>{T.changeLevel}</Pill>
+        </div>
+      ) : (
+        <>
+          <div className="mt-2 flex justify-center gap-2">
+            {spec("surge", "⚡", T.surge, 3)}
+            {spec("guard", "🛡", T.guard, 2)}
+          </div>
+          <p className="mt-1.5 h-4 text-center text-[11px] opacity-70">
+            {special === "surge" ? T.surgeHint : special === "guard" ? T.guardHint : ""}
+          </p>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            {ELS.map((el) => (
+              <motion.button
+                key={el} type="button" disabled={phase !== "pick"} onClick={() => play(el)}
+                whileHover={phase === "pick" ? { y: -6, scale: 1.04 } : undefined} whileTap={phase === "pick" ? { scale: 0.95 } : undefined}
+                className="flex flex-col items-center gap-1.5 rounded-2xl py-3"
+                style={{ background: "linear-gradient(160deg, rgba(48,42,32,.92), rgba(16,13,9,.96))", boxShadow: "inset 0 0 0 1px rgba(240,203,98,.4)", opacity: phase === "pick" ? 1 : 0.5 }}
+              >
+                <Orb el={el} size={58} />
+                <span className="text-[11px] font-semibold">{T[el]}</span>
+              </motion.button>
+            ))}
+          </div>
+          <p className="mt-3 text-center text-[10.5px] opacity-60">{T.legend}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* =====================  GAME 5: DOTS AND BOXES  ===================== */
+const freshBoard = (R, C) => ({ H: Array((R + 1) * C).fill(0), V: Array(R * (C + 1)).fill(0), B: Array(R * C).fill(0), sp: 0, sa: 0 });
+
+function adjBoxes(m, R, C) {
+  if (m.t === "h") {
+    const r = Math.floor(m.i / C), c = m.i % C;
+    return [[r - 1, c], [r, c]].filter(([a]) => a >= 0 && a < R);
+  }
+  const r = Math.floor(m.i / (C + 1)), c = m.i % (C + 1);
+  return [[r, c - 1], [r, c]].filter(([, b]) => b >= 0 && b < C);
+}
+const sidesOf = (s, r, c, C) =>
+  (s.H[r * C + c] ? 1 : 0) + (s.H[(r + 1) * C + c] ? 1 : 0) + (s.V[r * (C + 1) + c] ? 1 : 0) + (s.V[r * (C + 1) + c + 1] ? 1 : 0);
+
+function applyMove(s, m, who, R, C) {
+  const ns = { H: s.H.slice(), V: s.V.slice(), B: s.B.slice(), sp: s.sp, sa: s.sa };
+  (m.t === "h" ? ns.H : ns.V)[m.i] = who;
+  let got = 0;
+  adjBoxes(m, R, C).forEach(([r, c]) => {
+    if (ns.B[r * C + c] === 0 && sidesOf(ns, r, c, C) === 4) { ns.B[r * C + c] = who; got++; }
+  });
+  if (who === 1) ns.sp += got; else ns.sa += got;
+  return { ns, got };
+}
+function freeMoves(s) {
+  const out = [];
+  s.H.forEach((v, i) => { if (!v) out.push({ t: "h", i }); });
+  s.V.forEach((v, i) => { if (!v) out.push({ t: "v", i }); });
+  return out;
+}
+const completes = (s, m, R, C) => adjBoxes(m, R, C).filter(([r, c]) => s.B[r * C + c] === 0 && sidesOf(s, r, c, C) === 3).length;
+const givesBox = (s, m, R, C) => adjBoxes(m, R, C).some(([r, c]) => s.B[r * C + c] === 0 && sidesOf(s, r, c, C) === 2);
+
+// how many boxes the opponent could grab right after this move
+function grabCount(s, m, R, C) {
+  let { ns } = applyMove(s, m, 2, R, C);
+  let total = 0;
+  for (;;) {
+    const f = freeMoves(ns).find((x) => completes(ns, x, R, C) > 0);
+    if (!f) break;
+    const r = applyMove(ns, f, 1, R, C);
+    ns = r.ns; total += r.got;
+  }
+  return total;
+}
+
+function aiPick(s, mode, R, C) {
+  const moves = freeMoves(s);
+  const rnd = (a) => a[Math.floor(Math.random() * a.length)];
+  const take = moves.filter((m) => completes(s, m, R, C) > 0);
+  if (take.length && !(mode === "careless" && Math.random() < 0.3)) return rnd(take);
+  const safe = moves.filter((m) => !givesBox(s, m, R, C));
+  if (mode === "careless") return Math.random() < 0.55 && safe.length ? rnd(safe) : rnd(moves);
+  if (safe.length) return rnd(safe);
+  if (mode === "smart") {
+    let best = Infinity, pick = [];
+    moves.forEach((m) => {
+      const g = grabCount(s, m, R, C);
+      if (g < best) { best = g; pick = [m]; } else if (g === best) pick.push(m);
+    });
+    return rnd(pick);
+  }
+  return rnd(moves);
+}
+
+function DotsGame({ cfg, T, onWin, onExit, again }) {
+  const R = num(cfg.rows, 3, 2, 6), C = num(cfg.cols, 3, 2, 6);
+  const mode = ["careless", "normal", "smart"].includes(cfg.ai) ? cfg.ai : "normal";
+  const [st, setSt] = useState(() => freshBoard(R, C));
+  const [turn, setTurn] = useState("p");
+  const [res, setRes] = useState(null);
+  const [hov, setHov] = useState(null);
+  const token = useRef(0);
+  useEffect(() => () => { token.current += 1; }, []);
+
+  const CELL = 70, PAD = 26;
+  const VW = C * CELL + PAD * 2, VH = R * CELL + PAD * 2;
+  const dx = (c) => PAD + c * CELL, dy = (r) => PAD + r * CELL;
+  const col = (w) => (w === 1 ? "#f0cb62" : "#4fd1c5");
+
+  // the game ends when every box is taken
+  useEffect(() => {
+    if (st.sp + st.sa !== R * C) return;
+    const r = st.sp > st.sa ? "win" : st.sp < st.sa ? "lose" : "draw";
+    setRes(r); setTurn("over");
+    if (r === "win") {
+      const my = token.current;
+      const id = setTimeout(() => { if (token.current === my) onWin(); }, 1500);
+      return () => clearTimeout(id);
+    }
+  }, [st]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const runAI = async (s0) => {
+    const my = token.current;
+    const nap = async (ms) => { await sleep(ms); if (token.current !== my) throw STOP; };
+    try {
+      await nap(700);
+      let s = s0;
+      for (;;) {
+        if (!freeMoves(s).length) break;
+        const m = aiPick(s, mode, R, C);
+        const { ns, got } = applyMove(s, m, 2, R, C);
+        s = ns; setSt(ns);
+        if (got === 0) { setTurn("p"); break; }
+        await nap(800); // it closed a box, so it moves again
+      }
+    } catch (e) {
+      if (e !== STOP) console.error(e);
+    }
+  };
+
+  const place = (m) => {
+    if (turn !== "p" || res) return;
+    const { ns, got } = applyMove(st, m, 1, R, C);
+    setSt(ns); setHov(null);
+    if (got === 0 && freeMoves(ns).length) { setTurn("a"); runAI(ns); }
+  };
+
+  const edge = (t, i, x1, y1, x2, y2) => {
+    const owner = (t === "h" ? st.H : st.V)[i];
+    const isHov = hov && hov.t === t && hov.i === i && turn === "p" && !owner;
+    const canPlay = turn === "p" && !owner && !res;
+    return (
+      <g key={t + i}>
+        {!owner && (
+          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={isHov ? "rgba(240,203,98,.9)" : "rgba(240,203,98,.16)"} strokeWidth={isHov ? 6 : 3} strokeLinecap="round" />
+        )}
+        {owner ? (
+          <motion.line
+            initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.25 }}
+            x1={x1} y1={y1} x2={x2} y2={y2} stroke={col(owner)} strokeWidth={6} strokeLinecap="round"
+            style={{ filter: `drop-shadow(0 0 5px ${col(owner)}aa)` }}
+          />
+        ) : null}
+        {canPlay && (
+          <line
+            x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth={28} strokeLinecap="round" style={{ cursor: "pointer" }}
+            onPointerEnter={() => setHov({ t, i })} onPointerLeave={() => setHov(null)} onClick={() => place({ t, i })}
+          />
+        )}
+      </g>
+    );
+  };
+
+  const edges = [];
+  for (let r = 0; r <= R; r++) for (let c = 0; c < C; c++) edges.push(edge("h", r * C + c, dx(c), dy(r), dx(c + 1), dy(r)));
+  for (let r = 0; r < R; r++) for (let c = 0; c <= C; c++) edges.push(edge("v", r * (C + 1) + c, dx(c), dy(r), dx(c), dy(r + 1)));
+
+  const msg = res === "win" ? T.youWin : res === "lose" ? T.rivalWins : res === "draw" ? T.draw : turn === "p" ? T.yourTurn : T.rivalTurn;
+
+  return (
+    <div className="flex w-full flex-col items-center">
+      <div
+        className="mb-3 flex w-full max-w-[400px] items-center justify-between rounded-2xl px-4 py-2.5"
+        style={{ background: "linear-gradient(160deg, rgba(48,42,32,.92), rgba(16,13,9,.96))", boxShadow: "inset 0 0 0 1px rgba(240,203,98,.4)" }}
+      >
+        <div className="text-center">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: "#f0cb62" }}>{T.you}</p>
+          <b className="font-serif text-2xl" style={{ color: "#f0cb62" }}>{st.sp}</b>
+        </div>
+        <motion.p key={msg} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="px-2 text-center text-[12px] font-semibold">{msg}</motion.p>
+        <div className="text-center">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: "#4fd1c5" }}>{T.rival}</p>
+          <b className="font-serif text-2xl" style={{ color: "#4fd1c5" }}>{st.sa}</b>
+        </div>
+      </div>
+
+      <div style={{ perspective: 1100 }}>
+        <motion.div
+          initial={{ rotateX: 38, opacity: 0, y: 24 }} animate={{ rotateX: 12, opacity: 1, y: 0 }}
+          transition={{ type: "spring", stiffness: 80, damping: 16 }}
+          style={{
+            width: "min(92vw, 400px)", padding: 8, borderRadius: 20, background: "linear-gradient(145deg,#3a3126,#14100c)",
+            boxShadow: "0 0 0 1.5px rgba(240,203,98,.7), 0 26px 50px rgba(0,0,0,.55)",
+          }}
+        >
+          <div style={{ borderRadius: 12, background: "radial-gradient(ellipse at 50% 30%, #1c1810, #0b0a08)", overflow: "hidden" }}>
+            <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{ display: "block" }}>
+              {st.B.map((o, k) => {
+                if (!o) return null;
+                const r = Math.floor(k / C), c = k % C;
+                return (
+                  <motion.g
+                    key={"b" + k} initial={{ opacity: 0, scale: 0.4 }} animate={{ opacity: 1, scale: 1 }}
+                    transition={{ type: "spring", stiffness: 220, damping: 16 }} style={{ transformBox: "fill-box", transformOrigin: "center" }}
+                  >
+                    <rect x={dx(c) + 9} y={dy(r) + 9} width={CELL - 18} height={CELL - 18} rx={10} fill={col(o)} fillOpacity={0.22} stroke={col(o)} strokeOpacity={0.6} />
+                    <text x={dx(c) + CELL / 2} y={dy(r) + CELL / 2 + 9} textAnchor="middle" fontSize="26" fontFamily="Georgia, serif" fill={col(o)}>{o === 1 ? "♠" : "◆"}</text>
+                  </motion.g>
+                );
+              })}
+              {edges}
+              {Array.from({ length: (R + 1) * (C + 1) }).map((_, k) => (
+                <circle key={k} cx={dx(k % (C + 1))} cy={dy(Math.floor(k / (C + 1)))} r={5.5} fill="url(#kg-g)" />
+              ))}
+            </svg>
+          </div>
+        </motion.div>
+      </div>
+
+      <p className="mt-4 text-center text-[11px] opacity-65">{T.boxHint}</p>
+      {(res === "lose" || res === "draw") && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-3 flex flex-wrap justify-center gap-2">
+          <Pill gold onClick={again}>{T.tryAgain}</Pill>
+          <Pill onClick={onExit}>{T.changeLevel}</Pill>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+/* =====================  GAME 6: MATCH THE PAIRS  ===================== */
+const MEM_CARDS = [["A", "♠"], ["K", "♥"], ["Q", "♦"], ["J", "♣"], ["10", "♥"], ["9", "♠"], ["8", "♦"], ["7", "♣"], ["6", "♥"], ["5", "♠"], ["4", "♦"], ["3", "♣"]];
+const shuffleArr = (a) => {
+  const d = a.slice();
+  for (let i = d.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [d[i], d[j]] = [d[j], d[i]];
+  }
+  return d;
+};
+
+function Memory({ cfg, T, onWin, onExit, again }) {
+  const cols = num(cfg.cols, 4, 2, 6), rows = num(cfg.rows, 3, 2, 6);
+  const pairs = Math.min(MEM_CARDS.length, Math.floor((cols * rows) / 2));
+  const maxMisses = num(cfg.maxMisses, 0, 0, 99);
+  const previewMs = num(cfg.previewMs, 1600, 0, 6000);
+  const [deck] = useState(() => shuffleArr(Array.from({ length: pairs * 2 }, (_, i) => ({ k: i % pairs }))));
+  const [up, setUp] = useState([]);
+  const [done, setDone] = useState([]);
+  const [moves, setMoves] = useState(0);
+  const [misses, setMisses] = useState(0);
+  const [peek, setPeek] = useState(previewMs > 0);
+  const [res, setRes] = useState(null);
+  const lock = useRef(false);
+  const alive = useRef(true);
+  const boxRef = useRef(null);
+  const boxW = useWidth(boxRef, 340);
+  const gap = 8;
+  const w = Math.max(44, Math.min(96, Math.floor((boxW - gap * (cols - 1)) / cols)));
+  const h = Math.round(w * 1.4);
+
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => {
+    if (!previewMs) return;
+    const id = setTimeout(() => setPeek(false), previewMs + 700);
+    return () => clearTimeout(id);
+  }, [previewMs]);
+
+  const tap = (i) => {
+    if (peek || lock.current || res) return;
+    if (done.includes(i) || up.includes(i)) return;
+    const nu = [...up, i];
+    setUp(nu);
+    if (nu.length < 2) return;
+    lock.current = true;
+    setMoves((m) => m + 1);
+    const [a, b] = nu;
+    setTimeout(() => {
+      if (!alive.current) return;
+      if (deck[a].k === deck[b].k) {
+        const nd = [...done, a, b];
+        setDone(nd);
+        if (nd.length === pairs * 2) {
+          setRes("win");
+          setTimeout(() => { if (alive.current) onWin(); }, 1100);
+        }
+      } else {
+        const nm = misses + 1;
+        setMisses(nm);
+        if (maxMisses && nm >= maxMisses) setRes("lose");
+      }
+      setUp([]);
+      lock.current = false;
+    }, 750);
+  };
+
+  const left = maxMisses ? Math.max(0, maxMisses - misses) : null;
+
+  return (
+    <div className="w-full">
+      <div className="mb-3 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.18em]">
+        <span style={{ color: "#c9972f" }}>{T.pairs} <b className="ml-1 text-[#efe8d6]">{done.length / 2}/{pairs}</b></span>
+        <span style={{ color: "#c9972f" }}>{T.moves} <b className="ml-1 text-[#efe8d6]">{moves}</b></span>
+        {left !== null && (
+          <span className="flex items-center gap-1" style={{ color: "#c9972f" }}>
+            {T.missesLeft}
+            <b className="ml-1 text-[#efe8d6]">{left}</b>
+          </span>
+        )}
+      </div>
+      <p className="mb-3 h-5 text-center text-sm font-medium">
+        {res === "win" ? T.youWin : res === "lose" ? T.outOfMisses : peek ? T.memorizeCards : T.findPairs}
+      </p>
+
+      <div ref={boxRef} className="w-full">
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, ${w}px)`, gap, justifyContent: "center" }}>
+          {deck.map((c, i) => {
+            const isDone = done.includes(i);
+            const canTap = !peek && !lock.current && !res && !isDone && !up.includes(i);
+            return (
+              <motion.div
+                key={i} style={{ perspective: 700 }}
+                initial={{ opacity: 0, y: 28, rotateX: 50 }} animate={{ opacity: 1, y: 0, rotateX: 0 }}
+                transition={{ delay: i * 0.04, type: "spring", stiffness: 120, damping: 16 }}
+              >
+                <motion.div
+                  whileHover={canTap ? { y: -5 } : undefined} whileTap={canTap ? { scale: 0.95 } : undefined}
+                  animate={isDone ? { scale: [1, 1.12, 1] } : { scale: 1 }}
+                  onClick={() => tap(i)}
+                  style={{
+                    cursor: canTap ? "pointer" : "default", borderRadius: w * 0.09,
+                    boxShadow: isDone ? "0 0 0 2px #f0cb62, 0 0 22px rgba(240,203,98,.7)" : undefined,
+                  }}
+                >
+                  <Flip
+                    up={peek || up.includes(i) || isDone} w={w} h={h} r={w * 0.09}
+                    front={<PlayingFace rank={MEM_CARDS[c.k][0]} suit={MEM_CARDS[c.k][1]} w={w} />}
+                  />
+                </motion.div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+
+      {res === "lose" && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 flex flex-wrap justify-center gap-2">
+          <Pill gold onClick={again}>{T.tryAgain}</Pill>
+          <Pill onClick={onExit}>{T.changeLevel}</Pill>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
 /* =====================  HUB ART  ===================== */
 function GameArt({ kind }) {
   if (kind === "puzzle")
@@ -809,9 +1501,33 @@ function GameArt({ kind }) {
         ))}
       </div>
     );
-  return (
-    <div className="font-serif text-[34px] font-bold leading-none" style={goldText}>21</div>
-  );
+  if (kind === "elements")
+    return (
+      <div style={{ display: "flex", gap: 3 }}>
+        {["fire", "water", "grass"].map((e) => (
+          <svg key={e} viewBox="0 0 64 64" width="18" height="18"><Glyph el={e} /></svg>
+        ))}
+      </div>
+    );
+  if (kind === "dots")
+    return (
+      <svg width="52" height="52" viewBox="0 0 52 52">
+        <rect x="8" y="8" width="18" height="18" fill="#f0cb62" fillOpacity=".25" />
+        <path d="M8 8 H26 V26 H8 Z M26 8 H44 M26 26 H44" fill="none" stroke="#f0cb62" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        {[8, 26, 44].flatMap((x) => [8, 26, 44].map((y) => <circle key={x + "-" + y} cx={x} cy={y} r="3.4" fill="#f6dc8c" />))}
+      </svg>
+    );
+  if (kind === "memory")
+    return (
+      <div style={{ position: "relative", width: 62, height: 52 }}>
+        {[-12, 12].map((r, i) => (
+          <div key={i} style={{ position: "absolute", left: 14 + i * 14, top: 4, width: 26, height: 38, transform: `rotate(${r}deg)`, transformOrigin: "50% 100%" }}>
+            {i ? <CardBack r={5} /> : <PlayingFace rank="K" suit="♥" w={26} />}
+          </div>
+        ))}
+      </div>
+    );
+  return <div className="font-serif text-[34px] font-bold leading-none" style={goldText}>21</div>;
 }
 
 function WinScreen({ art, T, onOpen }) {
@@ -925,6 +1641,15 @@ export default function KingGames() {
             <stop offset="0" stopColor="#fff3bf" /><stop offset=".3" stopColor="#f0cb62" /><stop offset=".6" stopColor="#b8862b" />
             <stop offset=".82" stopColor="#f6dc8c" /><stop offset="1" stopColor="#c9972f" />
           </linearGradient>
+                    <linearGradient id="kg-fire" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#ffd36b" /><stop offset=".5" stopColor="#ff7a3d" /><stop offset="1" stopColor="#d6361f" />
+          </linearGradient>
+          <linearGradient id="kg-water" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#bfe6ff" /><stop offset=".5" stopColor="#4aa8ff" /><stop offset="1" stopColor="#1d5fc2" />
+          </linearGradient>
+          <linearGradient id="kg-grass" x1="0" x2="1" y1="1" y2="0">
+            <stop offset="0" stopColor="#1f8a3a" /><stop offset=".5" stopColor="#58d068" /><stop offset="1" stopColor="#c8f59a" />
+          </linearGradient>
         </defs>
       </svg>
 
@@ -1024,6 +1749,9 @@ export default function KingGames() {
                         {game === "puzzle" && <Puzzle key={level} cfg={lvCfg} art={art} T={T} onWin={win} />}
                         {game === "find" && <Find key={level} cfg={lvCfg} art={art} T={T} onWin={win} onExit={() => setStep("level")} />}
                         {game === "blackjack" && <Blackjack key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
+                        {game === "elements" && <Retryable Game={Elements} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
+                        {game === "dots" && <Retryable Game={DotsGame} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
+                        {game === "memory" && <Retryable Game={Memory} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
                       </div>
                     )}
 
