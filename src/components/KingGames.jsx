@@ -6,6 +6,7 @@ import { useData } from "../context/DataContext";
 import { supabase } from "../lib/supabase";
 import { tx } from "../lib/i18n";
 import { CW, CH, frontToDataUrl } from "./KingCard";
+import { Checkers, HigherLower, WaterSort, SnakeGame } from "./MoreGames";
 
 const GOLD = "linear-gradient(180deg,#fff3bf 0%,#f0cb62 30%,#b8862b 58%,#f6dc8c 80%,#c9972f 100%)";
 const goldText = { backgroundImage: GOLD, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" };
@@ -43,6 +44,12 @@ const TXT = {
     draw: "It's a draw", rivalWins: "Rival wins",
     pairsWord: "pairs", missesWord: "misses", pairs: "Pairs", missesLeft: "Misses left",
     memorizeCards: "Memorize the cards…", findPairs: "Find the pairs", outOfMisses: "Out of misses",
+        higher: "Higher", lower: "Lower", streak: "Streak", inARow: "in a row", livesWord: "lives",
+    sameRank: "Same rank! Drawing again", hlAsk: "Will the next card be higher or lower?", aceHigh: "Ace is high",
+    undo: "Undo", restart: "Restart", waterHint: "Tap a tube, then tap where to pour",
+    colorsWord: "colors", tubesWord: "tubes",
+    snakeStart: "Swipe or press an arrow to start", coinsWord: "coins", wrapHint: "Edges wrap around",
+    wallHint: "Walls are deadly", snakeOver: "Game over", mustJump: "You must capture",
   },
   hi: {
     brand: "यूटिलिटी कार्ड · गेम", hubTitle: "किंग जीतो", hubSub: "कोई भी गेम जीतकर मेरा कार्ड खोलें",
@@ -65,6 +72,12 @@ const TXT = {
     draw: "बराबरी", rivalWins: "रिवाल जीता",
     pairsWord: "जोड़ियाँ", missesWord: "मिस", pairs: "जोड़ियाँ", missesLeft: "बचे मिस",
     memorizeCards: "कार्ड याद करें…", findPairs: "जोड़ियाँ ढूँढें", outOfMisses: "मिस खत्म",
+        higher: "ऊँचा", lower: "नीचा", streak: "लगातार सही", inARow: "लगातार", livesWord: "जान",
+    sameRank: "बराबर कार्ड! फिर से बाँटें", hlAsk: "अगला कार्ड ऊँचा होगा या नीचा?", aceHigh: "इक्का सबसे ऊँचा है",
+    undo: "वापस", restart: "फिर से शुरू", waterHint: "ट्यूब चुनें, फिर जहाँ उडेलना है वहाँ टैप करें",
+    colorsWord: "रंग", tubesWord: "ट्यूब",
+    snakeStart: "शुरू करने के लिए स्वाइप करें या तीर दबाएँ", coinsWord: "सिक्के", wrapHint: "किनारे आपस में जुड़े हैं",
+    wallHint: "दीवार से टकराना मना है", snakeOver: "गेम ओवर", mustJump: "आपको कैप्चर करना होगा",
         
   },
 
@@ -125,6 +138,35 @@ const DEFAULTS = {
       hard: { cols: 5, rows: 4, maxMisses: 8, previewMs: 1500 },
     },
   },
+
+    checkers: {
+    enabled: true, sort: 7,
+    title: { en: "Checkers", hi: "चेकर्स" },
+    desc: { en: "Jump the rival's pieces and crown your kings.", hi: "रिवाल के मोहरों पर कूदें और अपने किंग बनाएँ।" },
+    levels: { easy: { depth: 1, mistakes: 0.4 }, medium: { depth: 3, mistakes: 0.1 }, hard: { depth: 5, mistakes: 0 } },
+  },
+  higherlower: {
+    enabled: true, sort: 8,
+    title: { en: "Higher or Lower", hi: "ऊँचा या नीचा" },
+    desc: { en: "Guess the next card and build a streak.", hi: "अगला कार्ड पहचानें और लगातार सही जवाबों की लड़ी बनाएँ।" },
+    levels: { easy: { target: 4, lives: 3, hint: true }, medium: { target: 6, lives: 2, hint: false }, hard: { target: 9, lives: 1, hint: false } },
+  },
+  watersort: {
+    enabled: true, sort: 9,
+    title: { en: "Water Sort", hi: "वॉटर सॉर्ट" },
+    desc: { en: "Pour the colors until every tube holds one color.", hi: "रंग उडेलें जब तक हर ट्यूब में एक ही रंग न हो जाए।" },
+    levels: { easy: { colors: 5, empty: 2 }, medium: { colors: 7, empty: 2 }, hard: { colors: 9, empty: 2 } },
+  },
+  snake: {
+    enabled: true, sort: 10,
+    title: { en: "Snake", hi: "स्नेक" },
+    desc: { en: "Glide, eat the gold coins and grow without crashing.", hi: "सरकें, सोने के सिक्के खाएँ और टकराए बिना बढ़ें।" },
+    levels: {
+      easy: { cols: 10, rows: 10, speed: 210, target: 8, wrap: true, rocks: 0 },
+      medium: { cols: 12, rows: 12, speed: 160, target: 14, wrap: false, rocks: 0 },
+      hard: { cols: 14, rows: 14, speed: 120, target: 20, wrap: false, rocks: 8 },
+    },
+  },
 };
 
 function mergeCfg(rows) {
@@ -162,6 +204,22 @@ function levelInfo(game, lv, T) {
     const m = num(lv.maxMisses, 0, 0, 99);
     return `${p} ${T.pairsWord}${m ? ` · ${m} ${T.missesWord}` : ""}`;
   }
+
+    if (game === "checkers") {
+    const d = num(lv.depth, 3, 1, 8);
+    return `8 × 8 · ${d <= 1 ? T.rivalCareless : d <= 3 ? T.rivalNormal : T.rivalSmart}`;
+  }
+  if (game === "higherlower") return `${num(lv.target, 5, 2, 30)} ${T.inARow} · ${num(lv.lives, 2, 1, 9)} ${T.livesWord}`;
+  if (game === "watersort") {
+    const c = num(lv.colors, 5, 2, 10), e = num(lv.empty, 2, 1, 4);
+    return `${c} ${T.colorsWord} · ${c + e} ${T.tubesWord}`;
+  }
+  if (game === "snake") {
+    const ms = num(lv.speed, 200, 60, 500);
+    const sp = ms >= 190 ? T.slow : ms >= 140 ? T.fast : T.veryFast;
+    return `${num(lv.cols, 10, 6, 20)} × ${num(lv.rows, 10, 6, 20)} · ${num(lv.target, 8, 3, 60)} ${T.coinsWord} · ${sp}`;
+  }
+
   return { careless: T.dealerCareless, normal: T.dealerNormal, smart: T.dealerSmart }[lv.dealer] || T.dealerNormal;
 }
 
@@ -1527,6 +1585,53 @@ function GameArt({ kind }) {
         ))}
       </div>
     );
+
+      if (kind === "checkers")
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", width: 52, height: 52, borderRadius: 6, overflow: "hidden", boxShadow: "0 0 0 1.5px rgba(240,203,98,.6)" }}>
+        {Array.from({ length: 16 }).map((_, i) => {
+          const dark = (Math.floor(i / 4) + (i % 4)) % 2 === 1;
+          return (
+            <span key={i} style={{ background: dark ? "#2a2118" : "#d9c9a3", display: "grid", placeItems: "center" }}>
+              {dark && (i < 4 || i > 11) && <i style={{ width: 9, height: 9, borderRadius: "50%", background: i < 4 ? "#2fc4b8" : "#f0cb62" }} />}
+            </span>
+          );
+        })}
+      </div>
+    );
+  if (kind === "higherlower")
+    return (
+      <div style={{ position: "relative", width: 62, height: 52 }}>
+        {[[-10, "K", "♠"], [10, "3", "♥"]].map(([r, rk, su], i) => (
+          <div key={i} style={{ position: "absolute", left: 12 + i * 14, top: 4, width: 26, height: 38, transform: `rotate(${r}deg)`, transformOrigin: "50% 100%" }}>
+            <PlayingFace rank={rk} suit={su} w={26} />
+          </div>
+        ))}
+        <b style={{ ...goldText, position: "absolute", right: 0, top: 0, fontSize: 14 }}>▲</b>
+        <b style={{ ...goldText, position: "absolute", right: 0, bottom: 0, fontSize: 14 }}>▼</b>
+      </div>
+    );
+  if (kind === "watersort")
+    return (
+      <div style={{ display: "flex", gap: 5 }}>
+        {[["#ff3b5c", "#3bd16f"], ["#2f8bff", "#ffb020"], ["#a64dff", "#18d3d1"]].map((cs, i) => (
+          <div key={i} style={{ width: 14, height: 48, borderRadius: "3px 3px 8px 8px", overflow: "hidden", display: "flex", flexDirection: "column-reverse", boxShadow: "inset 0 0 0 1.5px rgba(200,240,240,.6)" }}>
+            {cs.map((c, j) => <span key={j} style={{ height: "28%", background: c }} />)}
+          </div>
+        ))}
+      </div>
+    );
+  if (kind === "snake")
+    return (
+      <svg width="56" height="52" viewBox="0 0 56 52">
+        <path d="M6 40 H28 V16 H44" fill="none" stroke="#0d3a2a" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M6 40 H28 V16 H44" fill="none" stroke="#2fae7d" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M6 40 H28 V16 H44" fill="none" stroke="#4ed19a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="46" cy="16" r="5" fill="#f0cb62" />
+        <circle cx="50" cy="44" r="4" fill="#f6dc8c" />
+      </svg>
+    );
+
   return <div className="font-serif text-[34px] font-bold leading-none" style={goldText}>21</div>;
 }
 
@@ -1560,6 +1665,7 @@ function WinScreen({ art, T, onOpen }) {
   );
 }
 
+const UI = { Pill, goldText, GOLD, chipStyle, Flip, PlayingFace, CardBack, sleep, STOP, num, useWidth };
 /* =====================  THE OVERLAY  ===================== */
 export default function KingGames() {
   const { lang } = useSettings();
@@ -1752,6 +1858,11 @@ export default function KingGames() {
                         {game === "elements" && <Retryable Game={Elements} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
                         {game === "dots" && <Retryable Game={DotsGame} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
                         {game === "memory" && <Retryable Game={Memory} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
+
+                        {game === "checkers" && <Retryable Game={Checkers} ui={UI} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
+                        {game === "higherlower" && <Retryable Game={HigherLower} ui={UI} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
+                        {game === "watersort" && <Retryable Game={WaterSort} ui={UI} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
+                        {game === "snake" && <Retryable Game={SnakeGame} ui={UI} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
                       </div>
                     )}
 
