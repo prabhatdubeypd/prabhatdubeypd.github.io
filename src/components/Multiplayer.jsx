@@ -13,12 +13,12 @@ const PANEL = {
   boxShadow: "inset 0 0 0 1px rgba(240,203,98,.4)",
 };
 const LEVELS = ["easy", "medium", "hard"];
-const DUELS = ["dots", "memory"]; // played turn by turn on one shared board (online)
-const PASS = ["dots", "checkers"]; // two players, one phone
+const DUELS = ["dots", "memory", "checkers"]; // played turn by turn on one shared board (online)
+const PASS = ["dots", "checkers"]; // two players, one phone (Pass & Play)
 const NULL_NET = { send() {}, on: () => () => {} };
 /* which ways a game can be played with a friend */
 const modesOf = (k) => ["race", ...(DUELS.includes(k) ? ["duel"] : []), ...(PASS.includes(k) ? ["pass"] : [])];
-const defMode = (k) => (k === "checkers" ? "pass" : DUELS.includes(k) ? "duel" : "race");
+const defMode = (k) => (DUELS.includes(k) ? "duel" : "race");
 const fmt = (s, o) => String(s).replace(/\{(\w+)\}/g, (_, k) => (o[k] ?? ""));
 const ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const makeCode = () => Array.from({ length: 5 }, () => ALPHA[Math.floor(Math.random() * ALPHA.length)]).join("");
@@ -42,7 +42,7 @@ const MT = {
     youWon: "You won!", youLost: "{name} won", draw: "It's a draw", wonSub: "The King is yours", lostSub: "So close. Want a rematch?",
     openCard: "Open the card", rematch: "Rematch", rematchWait: "Waiting for {name}…", rematchAsk: "{name} wants a rematch",
     leave: "Leave room", back: "Back",
-    pass: "Same phone",
+    pass: "Pass & Play",
     howTo: "How do you want to play?",
     passHint: "Two players take turns on this phone",
     joinCodeTitle: "Got a room code?", joinCodeBtn: "Join room",
@@ -66,7 +66,7 @@ const MT = {
     youWon: "आप जीते!", youLost: "{name} जीता", draw: "बराबरी", wonSub: "किंग अब आपका है", lostSub: "बहुत करीब थे। फिर खेलें?",
     openCard: "कार्ड खोलें", rematch: "रीमैच", rematchWait: "{name} का इंतज़ार…", rematchAsk: "{name} रीमैच चाहता है",
     leave: "रूम छोड़ें", back: "वापस",
-    pass: "एक ही फ़ोन",
+    pass: "पास करें & खेलें",
     howTo: "कैसे खेलना है?",
     passHint: "दो खिलाड़ी इसी फ़ोन पर बारी-बारी खेलें",
     joinCodeTitle: "रूम कोड है?", joinCodeBtn: "रूम में जुड़ें",
@@ -527,16 +527,19 @@ function ckMoves(g, side) {
   return jumps.length ? jumps : steps; // capturing is mandatory
 }
 
-function LocalCheckers({ ui, T, S, names, onFinish }) {
+function CheckersGame({ ui, T, S, role, names, net, onFinish }) {
   const { useWidth } = ui;
+  const local = role === "local";
+  const me = role === "host" ? 1 : role === "guest" ? 2 : 0; // host = gold (bottom), guest = teal (top)
   const [pieces, setPieces] = useState(ckInit);
-  const [turn, setTurn] = useState(1); // 1 = host (gold, bottom) | 2 = guest (teal, top)
+  const [turn, setTurn] = useState(1);
   const [sel, setSel] = useState(null);
   const [res, setRes] = useState(null);
   const [last, setLast] = useState(null);
   const alive = useRef(true);
   const boxRef = useRef(null);
   const boxW = useWidth(boxRef, 360);
+  const netMove = useRef(null);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   const size = Math.floor(Math.min(boxW, 400));
@@ -544,18 +547,19 @@ function LocalCheckers({ ui, T, S, names, onFinish }) {
   const cell = bd / 8;
   const grid = ckGrid(pieces);
   const moves = turn ? ckMoves(grid, turn) : [];
+  const canAct = local || turn === me; // online: only on your own turn
   const selPiece = sel ? pieces.find((x) => x.id === sel) : null;
-  const dests = selPiece && turn ? moves.filter((m) => m.fr === selPiece.r && m.fc === selPiece.c) : [];
+  const dests = selPiece && turn && canAct ? moves.filter((m) => m.fr === selPiece.r && m.fc === selPiece.c) : [];
   const dkey = (m) => { const e = m.path[m.path.length - 1]; return `${e[0]}-${e[1]}`; };
   const destSet = new Set(dests.map(dkey));
-  const mustJump = moves.length > 0 && moves[0].caps.length > 0;
+  const mustJump = canAct && moves.length > 0 && moves[0].caps.length > 0;
 
   const finish = (w) => {
     setRes(w); setTurn(0); setSel(null);
     setTimeout(() => { if (alive.current) onFinish(w); }, 1200);
   };
 
-  const doMove = (m, who) => {
+  const doMove = (m, who, fromNet) => {
     const mover = pieces.find((x) => x.r === m.fr && x.c === m.fc);
     if (!mover) return;
     let cur = pieces.filter((x) => !m.caps.some(([r, c]) => x.r === r && x.c === c));
@@ -565,28 +569,42 @@ function LocalCheckers({ ui, T, S, names, onFinish }) {
     setPieces(cur);
     setLast({ from: [m.fr, m.fc], to: end });
     setSel(null);
+    if (!local && !fromNet) net.send({ t: "ck", m: { fr: m.fr, fc: m.fc, path: m.path, caps: m.caps } });
     const opp = who === 1 ? 2 : 1;
     if (!ckMoves(ckGrid(cur), opp).length) { finish(who === 1 ? "host" : "guest"); return; }
     setTurn(opp);
   };
 
+  // the friend's move: only accepted if it is really a legal move for them right now
+  netMove.current = (m) => {
+    if (local || res || !m) return;
+    const opp = me === 1 ? 2 : 1;
+    if (turn !== opp) return;
+    const legal = ckMoves(ckGrid(pieces), opp).find(
+      (x) => x.fr === m.fr && x.fc === m.fc && JSON.stringify(x.path) === JSON.stringify(m.path)
+    );
+    if (legal) doMove(legal, opp, true);
+  };
+  useEffect(() => net.on((msg) => { if (msg.t === "ck") netMove.current && netMove.current(msg.m); }), []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const clickPiece = (pc) => {
-    if (!turn || res || pc.p !== turn) return;
+    if (!turn || res || !canAct || pc.p !== turn) return;
     if (sel === pc.id) { setSel(null); return; }
     if (moves.some((m) => m.fr === pc.r && m.fc === pc.c)) setSel(pc.id);
   };
   const clickSquare = (r, c) => {
-    if (!turn || res || !selPiece) return;
+    if (!turn || res || !canAct || !selPiece) return;
     const m = dests.find((x) => dkey(x) === `${r}-${c}`);
-    if (m) doMove(m, turn);
+    if (m) doMove(m, turn, false);
   };
 
   const n1 = pieces.filter((x) => x.p === 1).length;
   const n2 = pieces.filter((x) => x.p === 2).length;
   const status =
     res === "draw" ? S.draw
-    : res ? fmt(S.youLost, { name: names[res] })
-    : fmt(S.theirTurn, { name: turn === 1 ? names.host : names.guest });
+    : res ? (local || res !== role ? fmt(S.youLost, { name: names[res] }) : S.youWon)
+    : local ? fmt(S.theirTurn, { name: turn === 1 ? names.host : names.guest })
+    : turn === me ? S.yourTurn : fmt(S.theirTurn, { name: me === 1 ? names.guest : names.host });
 
   return (
     <div className="flex w-full flex-col items-center">
@@ -652,7 +670,7 @@ function LocalCheckers({ ui, T, S, names, onFinish }) {
                       exit={{ scale: 0, opacity: 0 }}
                       transition={{ x: { type: "spring", stiffness: 240, damping: 24 }, y: { type: "spring", stiffness: 240, damping: 24 } }}
                       onClick={() => clickPiece(pc)}
-                      style={{ position: "absolute", left: 0, top: 0, width: "12.5%", height: "12.5%", zIndex: isSel ? 5 : 1, cursor: pc.p === turn && !res ? "pointer" : "default" }}
+                      style={{ position: "absolute", left: 0, top: 0, width: "12.5%", height: "12.5%", zIndex: isSel ? 5 : 1, cursor: canAct && pc.p === turn && !res ? "pointer" : "default" }}
                     >
                       <motion.div
                         animate={{ y: isSel ? -cell * 0.14 : 0, scale: isSel ? 1.1 : 1 }}
@@ -681,7 +699,7 @@ function LocalCheckers({ ui, T, S, names, onFinish }) {
         </div>
       </div>
 
-      <p className="mt-3 text-center text-[11px] opacity-65">{mustJump && !res ? T.mustJump : S.passHint}</p>
+      <p className="mt-3 text-center text-[11px] opacity-65">{mustJump && !res ? T.mustJump : local ? S.passHint : ""}</p>
     </div>
   );
 }
@@ -780,7 +798,7 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
     const u = ref.current.ui;
     const lcfg = (c[g] && c[g].levels[lv]) || {};
     const pm = (ref.current.pick && ref.current.pick.mode) || "race";
-    const md = mdIn || (pm === "duel" ? (g === "memory" ? "memory" : "dots") : "race");
+    const md = mdIn || (pm === "duel" ? (g === "memory" ? "memory" : g === "checkers" ? "checkers" : "dots") : "race");
     let dk = null;
     if (md === "memory") {
       const pairs = Math.min(u.MEM_CARDS.length, Math.floor((u.num(lcfg.cols, 4, 2, 6) * u.num(lcfg.rows, 3, 2, 6)) / 2));
@@ -917,11 +935,14 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
 
   /* ----- what to draw ----- */
   const list = Object.keys(cfg)
-    .filter((k) => cfg[k].enabled)
-    .filter((k) => LEVELS.some((l) => cfg[k].levels[l] && cfg[k].levels[l].enabled !== false))
-    .sort((a, b) => (cfg[a].sort ?? 0) - (cfg[b].sort ?? 0));
+  .filter((k) => cfg[k].enabled)
+  .filter((k) => DUELS.includes(k) && PASS.includes(k))
+  .filter((k) => LEVELS.some(
+    (l) => cfg[k].levels[l] && cfg[k].levels[l].enabled !== false
+  ))
+  .sort((a, b) => (cfg[a].sort ?? 0) - (cfg[b].sort ?? 0));
   const lvlsOf = (k) => (cfg[k] ? LEVELS.filter((l) => cfg[k].levels[l] && cfg[k].levels[l].enabled !== false) : []);
-  const hintOf = (k) => (PASS.includes(k) ? S.passHint : DUELS.includes(k) ? S.duelHint : S.raceHint);
+  const hintOf = (k) => (DUELS.includes(k) ? S.duelHint : PASS.includes(k) ? S.passHint : S.raceHint);
   const joinBad = view === "join" && !(join && cfg[join.g] && cfg[join.g].enabled);
   const inviteUrl = (() => {
     if (!code) return "";
@@ -1233,11 +1254,14 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
       {mode === "memory" && deck && (
         <MemoryDuel key={runKey} ui={ui} lc={lc} deck={deck} role={role} names={names} net={room} S={S} onFinish={(w) => F.current.finish(w)} />
       )}
+      {mode === "checkers" && (
+        <CheckersGame key={runKey} ui={ui} T={T} S={S} role={role} names={names} net={room} onFinish={(w) => F.current.finish(w)} />
+      )}
       {mode === "pass-dots" && (
         <DotsDuel key={runKey} ui={ui} lc={lc} role="local" names={names} net={NULL_NET} S={S} onFinish={(w) => finish(w)} />
       )}
       {mode === "pass-checkers" && (
-        <LocalCheckers key={runKey} ui={ui} T={T} S={S} names={names} onFinish={(w) => finish(w)} />
+        <CheckersGame key={runKey} ui={ui} T={T} S={S} role="local" names={names} net={NULL_NET} onFinish={(w) => finish(w)} />
       )}
 
       {!local && <Reactions onEmo={sendEmo} floats={floats} />}
