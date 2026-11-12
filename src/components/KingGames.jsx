@@ -7,6 +7,7 @@ import { supabase } from "../lib/supabase";
 import { tx } from "../lib/i18n";
 import { CW, CH, frontToDataUrl } from "./KingCard";
 import { Checkers, HigherLower, WaterSort, SnakeGame } from "./MoreGames";
+import { useSocial, readLink, clearLink, ResultScreen, ChallengeScreen, ChallengeChip, DailyCard, HubFooter, Leaderboard, fmtTime } from "./GameSocial";
 
 const GOLD = "linear-gradient(180deg,#fff3bf 0%,#f0cb62 30%,#b8862b 58%,#f6dc8c 80%,#c9972f 100%)";
 const goldText = { backgroundImage: GOLD, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" };
@@ -425,7 +426,7 @@ function Puzzle({ cfg, art, T, onWin }) {
     setMoves((m) => m + 1);
     if (isSolved(next)) {
       setPhase("won");
-      setTimeout(() => { if (alive.current) onWin(); }, 1300);
+            setTimeout(() => { if (alive.current) onWin({ moves: moves + 1, secs }); }, 1300);
     }
   };
   const slideRef = useRef(slide);
@@ -1470,7 +1471,7 @@ function Memory({ cfg, T, onWin, onExit, again }) {
         setDone(nd);
         if (nd.length === pairs * 2) {
           setRes("win");
-          setTimeout(() => { if (alive.current) onWin(); }, 1100);
+          setTimeout(() => { if (alive.current) onWin({ moves: moves + 1 }); }, 1100);
         }
       } else {
         const nm = misses + 1;
@@ -1677,30 +1678,81 @@ export default function KingGames() {
   const [game, setGame] = useState(null);
   const [level, setLevel] = useState("easy");
   const [cfg, setCfg] = useState(DEFAULTS);
-  const [cardRow, setCardRow] = useState(null);
+    const [cardRow, setCardRow] = useState(null);
   const [art, setArt] = useState(null);
+  const [result, setResult] = useState(null); // the score of the game that was just won
+  const [link, setLink] = useState(null); // a challenge that came from a shared link
+  const soc = useSocial(cfg); // sharing, challenge links, leaderboard, daily challenge, personal bests
   const originRef = useRef(origin);
   const winTimer = useRef(null);
-  const loaded = useRef(false);
+  const loadP = useRef(null);
+  const startAt = useRef(0);
+  const stepRef = useRef("hub");
   originRef.current = origin;
+  stepRef.current = step;
 
+  // loads the games table, the card and the social settings (once)
+  const ensure = () => {
+    if (!loadP.current) {
+      loadP.current = Promise.all([
+        supabase.from("games").select("*"),
+        supabase.from("card").select("*").eq("id", 1).maybeSingle(),
+        soc.load(),
+      ])
+        .then(([g, c]) => {
+          let merged = DEFAULTS;
+          if (!g.error && g.data?.length) { merged = mergeCfg(g.data); setCfg(merged); }
+          if (!c.error && c.data) setCardRow(c.data);
+          return merged;
+        })
+        .catch(() => DEFAULTS);
+    }
+    return loadP.current;
+  };
+
+  // the navbar button
   useEffect(() => {
     const h = (e) => {
       const o = e.detail || { x: window.innerWidth - 60, y: 60 };
-      setOrigin(o); setStep("hub"); setGame(null); setOpen(true);
-      if (!loaded.current) {
-        loaded.current = true;
-        Promise.all([supabase.from("games").select("*"), supabase.from("card").select("*").eq("id", 1).maybeSingle()])
-          .then(([g, c]) => {
-            if (!g.error && g.data?.length) setCfg(mergeCfg(g.data));
-            if (!c.error && c.data) setCardRow(c.data);
-          })
-          .catch(() => {});
-      }
+      setOrigin(o); setStep("hub"); setGame(null); setResult(null); setLink(null); setOpen(true);
+      ensure();
     };
     window.addEventListener("open-king-games", h);
     return () => window.removeEventListener("open-king-games", h);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // a shared link:  ?play=snake&lv=hard&t=47&by=Rahul   (or ?play=hub)
+  useEffect(() => {
+    const lk = readLink();
+    if (!lk) return undefined;
+    let dead = false;
+    (async () => {
+      const merged = await ensure();
+      const st = await soc.load();
+      if (dead || st.deeplinks === false) return;
+      const key = lk.play;
+      if (key !== "hub" && !(merged[key] && merged[key].enabled)) return;
+      await sleep(Number(st.link_delay_ms) || 900);
+      if (dead) return;
+      clearLink();
+      setOrigin({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      setResult(null);
+      if (key === "hub") { setGame(null); setLink(null); setStep("hub"); }
+      else {
+        const lv = LEVELS.includes(lk.lv) && merged[key].levels[lk.lv] && merged[key].levels[lk.lv].enabled !== false ? lk.lv : "easy";
+        setGame(key); setLevel(lv);
+        if (lk.t) { setLink({ ...lk, play: key, lv }); setStep("challenge"); }
+        else { setLink(null); setStep("level"); }
+      }
+      setOpen(true);
+    })();
+    return () => { dead = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // leaderboard of the game whose levels are on screen
+  useEffect(() => {
+    if (open && step === "level" && game && soc.settings.leaderboard) soc.loadBoard(game);
+  }, [open, step, game, soc.settings.leaderboard]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // the card front, drawn once, used by the puzzle and the King face
   useEffect(() => {
@@ -1726,8 +1778,30 @@ export default function KingGames() {
     setOpen(false);
     setTimeout(() => window.dispatchEvent(new CustomEvent("open-king-card", { detail: originRef.current })), 450);
   };
-  const win = () => { setStep("win"); clearTimeout(winTimer.current); winTimer.current = setTimeout(openCard, 2600); };
-  const back = () => { if (step === "play") setStep("level"); else if (step === "level") setStep("hub"); else close(); };
+    // starts a game and the stopwatch
+  const beginPlay = (k, lv) => {
+    setGame(k); setLevel(lv); setResult(null);
+    startAt.current = performance.now();
+    setStep("play");
+  };
+  // a game reports its win here. `stats` may carry { secs, moves }
+  const win = (stats = {}) => {
+    if (stepRef.current !== "play") return;
+    const secs =
+      typeof stats.secs === "number" && stats.secs > 0
+        ? stats.secs
+        : Math.max(1, Math.round((performance.now() - startAt.current) / 1000));
+    setResult(soc.record({ game, level, secs, moves: stats.moves, link }));
+    setStep("win");
+    clearTimeout(winTimer.current);
+    const auto = Number(soc.settings.auto_open_ms) || 0;
+    if (auto > 0) winTimer.current = setTimeout(openCard, auto);
+  };
+  const back = () => {
+    if (step === "play" || step === "win") setStep("level");
+    else if (step === "level" || step === "challenge") setStep("hub");
+    else close();
+  };
 
   if (typeof document === "undefined") return null;
 
@@ -1737,6 +1811,13 @@ export default function KingGames() {
   const c1 = `circle(${R}px at ${origin.x}px ${origin.y}px)`;
   const g = game ? cfg[game] : null;
   const lvCfg = g ? g.levels[level] || {} : {};
+  const openLevels = g ? LEVELS.filter((lv) => g.levels[lv] && g.levels[lv].enabled !== false) : [];
+    // fastest time you have on any level of a game
+  const bestAny = (k) => {
+    let m = null;
+    LEVELS.forEach((l) => { const b = soc.bestOf(k, l); if (b && (m === null || b.secs < m)) m = b.secs; });
+    return m;
+  };
 
   return createPortal(
     <>
@@ -1789,7 +1870,9 @@ export default function KingGames() {
                     initial={{ opacity: 0, y: 18, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -12 }}
                     transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
                   >
-                    {step === "hub" && (
+                    
+
+                  {step === "hub" && (
                       <div>
                         <div className="text-center">
                           {art && (
@@ -1798,6 +1881,9 @@ export default function KingGames() {
                           <h2 className="font-serif text-4xl font-bold sm:text-5xl" style={goldText}>{T.hubTitle}</h2>
                           <p className="mt-2 text-sm opacity-70">{T.hubSub}</p>
                         </div>
+
+                        <DailyCard lang={lang} soc={soc} titleOf={(k) => tx(cfg[k].title, lang)} lvLabel={(l) => T[l]} onPlay={beginPlay} />
+
                         <div className="mt-6 grid gap-3 sm:grid-cols-3">
                           {games.map((k, i) => (
                             <motion.button
@@ -1814,12 +1900,26 @@ export default function KingGames() {
                               <div className="grid h-14 w-16 shrink-0 place-items-center"><GameArt kind={k} /></div>
                               <div className="min-w-0">
                                 <b className="block font-serif text-lg leading-tight" style={goldText}>{tx(cfg[k].title, lang)}</b>
-                                <span className="mt-1 block text-[12px] leading-snug opacity-70">{tx(cfg[k].desc, lang)}</span>
+                             <span className="mt-1 block text-[12px] leading-snug opacity-70">{tx(cfg[k].desc, lang)}</span>
+                            
+                              {bestAny(k) !== null && (
+                             <span className="mt-1 block text-[11px] font-semibold" style={{ color: "#e8c15a" }}>★ {fmtTime(bestAny(k))}</span>
+                                )}
                               </div>
                             </motion.button>
                           ))}
                         </div>
+
+                        <HubFooter lang={lang} soc={soc} />
                       </div>
+                    )}
+
+                    {step === "challenge" && link && cfg[link.play] && (
+                      <ChallengeScreen
+                        lang={lang} link={link} art={art}
+                        gameTitle={tx(cfg[link.play].title, lang)} levelLabel={T[link.lv]}
+                        onAccept={() => beginPlay(link.play, link.lv)} onOther={() => setStep("hub")}
+                      />
                     )}
 
                     {step === "level" && g && (
@@ -1830,28 +1930,36 @@ export default function KingGames() {
                           <p className="mt-1 text-sm opacity-70">{T.chooseLevel}</p>
                         </div>
                         <div className="mt-5 space-y-3">
-                          {LEVELS.filter((lv) => g.levels[lv] && g.levels[lv].enabled !== false).map((lv, i) => (
-                            <motion.button
-                              key={lv} type="button" onClick={() => { setLevel(lv); setStep("play"); }}
-                              initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.08 * i, type: "spring", stiffness: 160, damping: 18 }}
-                              whileHover={{ scale: 1.02, x: 4 }} whileTap={{ scale: 0.98 }}
-                              className="flex w-full items-center justify-between rounded-2xl px-5 py-4 text-left"
-                              style={{ background: "linear-gradient(160deg, rgba(48,42,32,.92), rgba(16,13,9,.96))", boxShadow: "inset 0 0 0 1px rgba(240,203,98,.4), 0 10px 24px rgba(0,0,0,.4)" }}
-                            >
-                              <span>
-                                <b className="block font-serif text-xl" style={goldText}>{T[lv]}</b>
-                                <span className="mt-0.5 block text-[12px] opacity-70">{levelInfo(game, g.levels[lv], T)}</span>
-                              </span>
-                              <Dots n={i + 1} />
-                            </motion.button>
-                          ))}
+                          {openLevels.map((lv, i) => {
+                            const b = soc.bestOf(game, lv);
+                            return (
+                              <motion.button
+                                key={lv} type="button" onClick={() => beginPlay(game, lv)}
+                                initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.08 * i, type: "spring", stiffness: 160, damping: 18 }}
+                                whileHover={{ scale: 1.02, x: 4 }} whileTap={{ scale: 0.98 }}
+                                className="flex w-full items-center justify-between rounded-2xl px-5 py-4 text-left"
+                                style={{ background: "linear-gradient(160deg, rgba(48,42,32,.92), rgba(16,13,9,.96))", boxShadow: "inset 0 0 0 1px rgba(240,203,98,.4), 0 10px 24px rgba(0,0,0,.4)" }}
+                              >
+                                <span>
+                                  <b className="block font-serif text-xl" style={goldText}>{T[lv]}</b>
+                                  <span className="mt-0.5 block text-[12px] opacity-70">{levelInfo(game, g.levels[lv], T)}</span>
+                                  {b && <span className="mt-1 block text-[11px] font-semibold" style={{ color: "#e8c15a" }}>★ {fmtTime(b.secs)}</span>}
+                                </span>
+                                <Dots n={i + 1} />
+                              </motion.button>
+                            );
+                          })}
                         </div>
+                        {soc.settings.leaderboard && (
+                          <Leaderboard lang={lang} rows={soc.boards[game]} levels={openLevels} size={soc.settings.board_size} lvLabel={(l) => T[l]} />
+                        )}
                       </div>
                     )}
 
                     {step === "play" && g && (
                       <div className="mx-auto w-full max-w-[520px]">
                         <p className="mb-3 text-center font-mono text-[10px] uppercase tracking-[0.3em]" style={{ color: "#c9972f" }}>{tx(g.title, lang)} · {T[level]}</p>
+                        {link && link.t > 0 && link.play === game && link.lv === level && <ChallengeChip lang={lang} link={link} />}
                         {game === "puzzle" && <Puzzle key={level} cfg={lvCfg} art={art} T={T} onWin={win} />}
                         {game === "find" && <Find key={level} cfg={lvCfg} art={art} T={T} onWin={win} onExit={() => setStep("level")} />}
                         {game === "blackjack" && <Blackjack key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
@@ -1866,7 +1974,18 @@ export default function KingGames() {
                       </div>
                     )}
 
-                    {step === "win" && <WinScreen art={art} T={T} onOpen={openCard} />}
+                    {step === "win" && result && cfg[result.game] && (
+                      <ResultScreen
+                        lang={lang} T={T} art={art} res={result} soc={soc}
+                        gameTitle={tx(cfg[result.game].title, lang)} levelLabel={T[result.level]} lvLabel={(l) => T[l]}
+                        levels={LEVELS.filter((lv) => cfg[result.game].levels[lv] && cfg[result.game].levels[lv].enabled !== false)}
+                        onOpen={openCard}
+                        onReplay={() => beginPlay(result.game, result.level)}
+                        onLevels={() => setStep("level")}
+                      />
+                    )}
+                    {step === "win" && !result && <WinScreen art={art} T={T} onOpen={openCard} />}
+
                   </motion.div>
                 </AnimatePresence>
               </div>
