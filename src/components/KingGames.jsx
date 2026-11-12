@@ -8,6 +8,7 @@ import { tx } from "../lib/i18n";
 import { CW, CH, frontToDataUrl } from "./KingCard";
 import { Checkers, HigherLower, WaterSort, SnakeGame } from "./MoreGames";
 import { useSocial, readLink, clearLink, ResultScreen, ChallengeScreen, ChallengeChip, DailyCard, HubFooter, Leaderboard, fmtTime } from "./GameSocial";
+import MultiplayerFlow, { MpHubButton, readRoomLink, clearRoomLink } from "./Multiplayer";
 
 const GOLD = "linear-gradient(180deg,#fff3bf 0%,#f0cb62 30%,#b8862b 58%,#f6dc8c 80%,#c9972f 100%)";
 const goldText = { backgroundImage: GOLD, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" };
@@ -1666,7 +1667,7 @@ function WinScreen({ art, T, onOpen }) {
   );
 }
 
-const UI = { Pill, goldText, GOLD, chipStyle, Flip, PlayingFace, CardBack, sleep, STOP, num, useWidth };
+const UI = { Pill, goldText, GOLD, chipStyle, Flip, PlayingFace, CardBack, sleep, STOP, num, useWidth, MEM_CARDS, shuffleArr };
 /* =====================  THE OVERLAY  ===================== */
 export default function KingGames() {
   const { lang } = useSettings();
@@ -1682,6 +1683,7 @@ export default function KingGames() {
   const [art, setArt] = useState(null);
   const [result, setResult] = useState(null); // the score of the game that was just won
   const [link, setLink] = useState(null); // a challenge that came from a shared link
+    const [mpJoin, setMpJoin] = useState(null); // an invite to a live game that came from a link
   const soc = useSocial(cfg); // sharing, challenge links, leaderboard, daily challenge, personal bests
   const originRef = useRef(origin);
   const winTimer = useRef(null);
@@ -1714,7 +1716,7 @@ export default function KingGames() {
   useEffect(() => {
     const h = (e) => {
       const o = e.detail || { x: window.innerWidth - 60, y: 60 };
-      setOrigin(o); setStep("hub"); setGame(null); setResult(null); setLink(null); setOpen(true);
+            setOrigin(o); setStep("hub"); setGame(null); setResult(null); setLink(null); setMpJoin(null); setOpen(true);
       ensure();
     };
     window.addEventListener("open-king-games", h);
@@ -1745,6 +1747,25 @@ export default function KingGames() {
         else { setLink(null); setStep("level"); }
       }
       setOpen(true);
+    })();
+    return () => { dead = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // an invite to a live game:  ?room=ABCDE&g=dots&lv=easy&by=Rahul
+  useEffect(() => {
+    const rl = readRoomLink();
+    if (!rl) return undefined;
+    let dead = false;
+    (async () => {
+      await ensure();
+      const st = await soc.load();
+      if (dead || st.mp === false) return;
+      await sleep(Number(st.link_delay_ms) || 900);
+      if (dead) return;
+      clearRoomLink();
+      setOrigin({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      setResult(null); setLink(null); setGame(null);
+      setMpJoin(rl); setStep("mp"); setOpen(true);
     })();
     return () => { dead = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1817,7 +1838,25 @@ export default function KingGames() {
     let m = null;
     LEVELS.forEach((l) => { const b = soc.bestOf(k, l); if (b && (m === null || b.secs < m)) m = b.secs; });
     return m;
+  
   };
+
+    // draws one game. Used for solo play and for races with a friend
+  const renderGame = (k, lv, lcfg, onWinFn, onExitFn, keyId) => (
+    <>
+      {k === "puzzle" && <Puzzle key={keyId} cfg={lcfg} art={art} T={T} onWin={onWinFn} />}
+      {k === "find" && <Find key={keyId} cfg={lcfg} art={art} T={T} onWin={onWinFn} onExit={onExitFn} />}
+      {k === "blackjack" && <Blackjack key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
+      {k === "elements" && <Retryable Game={Elements} key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
+      {k === "dots" && <Retryable Game={DotsGame} key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
+      {k === "memory" && <Retryable Game={Memory} key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
+      {k === "checkers" && <Retryable Game={Checkers} ui={UI} key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
+      {k === "higherlower" && <Retryable Game={HigherLower} ui={UI} key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
+      {k === "watersort" && <Retryable Game={WaterSort} ui={UI} key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
+      {k === "snake" && <Retryable Game={SnakeGame} ui={UI} key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
+    </>
+  );
+
 
   return createPortal(
     <>
@@ -1858,7 +1897,8 @@ export default function KingGames() {
 
             <div className="relative mx-auto flex min-h-[100dvh] w-full max-w-[640px] flex-col px-4 pb-8 pt-4">
               <div className="flex items-center justify-between">
-                <button type="button" onClick={back} className={`rounded-full px-3 py-1.5 text-xs ${step === "hub" ? "invisible" : ""}`} style={chipStyle}>← {T.back}</button>
+                <button type="button" onClick={back} 
+               className={`rounded-full px-3 py-1.5 text-xs ${step === "hub" || step === "mp" ? "invisible" : ""}`} style={chipStyle}>← {T.back}</button>
                 <p className="font-mono text-[10px] uppercase tracking-[0.3em]" style={{ color: "#c9972f" }}>{T.brand}</p>
                 <button type="button" aria-label="Close" onClick={close} className="grid h-8 w-8 place-items-center rounded-full text-sm" style={chipStyle}>✕</button>
               </div>
@@ -1883,6 +1923,7 @@ export default function KingGames() {
                         </div>
 
                         <DailyCard lang={lang} soc={soc} titleOf={(k) => tx(cfg[k].title, lang)} lvLabel={(l) => T[l]} onPlay={beginPlay} />
+                                                  {soc.settings.mp !== false && <MpHubButton lang={lang} onClick={() => { setMpJoin(null); setStep("mp"); }} />}
 
                         <div className="mt-6 grid gap-3 sm:grid-cols-3">
                           {games.map((k, i) => (
@@ -1922,6 +1963,16 @@ export default function KingGames() {
                       />
                     )}
 
+                                        {step === "mp" && (
+                      <MultiplayerFlow
+                        lang={lang} T={T} cfg={cfg} soc={soc} art={art} ui={UI} Icon={GameArt}
+                        defaultName={soc.nick} join={mpJoin}
+                        info={(k, lv) => levelInfo(k, cfg[k].levels[lv], T)}
+                        renderGame={renderGame} onOpenCard={openCard}
+                        onHub={() => { setMpJoin(null); setStep("hub"); }}
+                      />
+                    )}
+
                     {step === "level" && g && (
                       <div className="mx-auto max-w-[420px]">
                         <div className="text-center">
@@ -1956,21 +2007,11 @@ export default function KingGames() {
                       </div>
                     )}
 
-                    {step === "play" && g && (
+                   {step === "play" && g && (
                       <div className="mx-auto w-full max-w-[520px]">
                         <p className="mb-3 text-center font-mono text-[10px] uppercase tracking-[0.3em]" style={{ color: "#c9972f" }}>{tx(g.title, lang)} · {T[level]}</p>
                         {link && link.t > 0 && link.play === game && link.lv === level && <ChallengeChip lang={lang} link={link} />}
-                        {game === "puzzle" && <Puzzle key={level} cfg={lvCfg} art={art} T={T} onWin={win} />}
-                        {game === "find" && <Find key={level} cfg={lvCfg} art={art} T={T} onWin={win} onExit={() => setStep("level")} />}
-                        {game === "blackjack" && <Blackjack key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
-                        {game === "elements" && <Retryable Game={Elements} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
-                        {game === "dots" && <Retryable Game={DotsGame} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
-                        {game === "memory" && <Retryable Game={Memory} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
-
-                        {game === "checkers" && <Retryable Game={Checkers} ui={UI} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
-                        {game === "higherlower" && <Retryable Game={HigherLower} ui={UI} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
-                        {game === "watersort" && <Retryable Game={WaterSort} ui={UI} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
-                        {game === "snake" && <Retryable Game={SnakeGame} ui={UI} key={level} cfg={lvCfg} T={T} onWin={win} onExit={() => setStep("level")} />}
+                        {renderGame(game, level, lvCfg, win, () => setStep("level"), level)}
                       </div>
                     )}
 

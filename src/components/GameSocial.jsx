@@ -30,6 +30,9 @@ const SET_DEF = {
   daily_game: "",
   daily_level: "",
   auto_open_ms: 0,
+    mp: true, // "Play with a friend"
+  mp_modes: "race,dots,memory", // which modes are on
+  mp_loser_opens: false, // true = the loser can open the card too
   base_url: "",
   share_text_en: "I beat {game} ({level}) in {time}! Can you beat me?",
   share_text_hi: "मैंने {game} ({level}) {time} में जीता! क्या आप मुझे हरा सकते हैं?",
