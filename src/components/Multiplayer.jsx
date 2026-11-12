@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { supabase } from "../lib/supabase";
 import { tx } from "../lib/i18n";
 import { makeLink, fmtTime } from "./GameSocial";
@@ -13,7 +13,12 @@ const PANEL = {
   boxShadow: "inset 0 0 0 1px rgba(240,203,98,.4)",
 };
 const LEVELS = ["easy", "medium", "hard"];
-const DUELS = ["dots", "memory"]; // played turn by turn on one shared board
+const DUELS = ["dots", "memory"]; // played turn by turn on one shared board (online)
+const PASS = ["dots", "checkers"]; // two players, one phone
+const NULL_NET = { send() {}, on: () => () => {} };
+/* which ways a game can be played with a friend */
+const modesOf = (k) => ["race", ...(DUELS.includes(k) ? ["duel"] : []), ...(PASS.includes(k) ? ["pass"] : [])];
+const defMode = (k) => (k === "checkers" ? "pass" : DUELS.includes(k) ? "duel" : "race");
 const fmt = (s, o) => String(s).replace(/\{(\w+)\}/g, (_, k) => (o[k] ?? ""));
 const ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const makeCode = () => Array.from({ length: 5 }, () => ALPHA[Math.floor(Math.random() * ALPHA.length)]).join("");
@@ -37,6 +42,12 @@ const MT = {
     youWon: "You won!", youLost: "{name} won", draw: "It's a draw", wonSub: "The King is yours", lostSub: "So close. Want a rematch?",
     openCard: "Open the card", rematch: "Rematch", rematchWait: "Waiting for {name}…", rematchAsk: "{name} wants a rematch",
     leave: "Leave room", back: "Back",
+    pass: "Same phone",
+    howTo: "How do you want to play?",
+    passHint: "Two players take turns on this phone",
+    joinCodeTitle: "Got a room code?", joinCodeBtn: "Join room",
+    badCode: "That code looks too short.", codeHint: "Type the 5-letter code your friend gave you",
+    p1: "Player 1", p2: "Player 2", startNow: "Start playing",
   },
   hi: {
     hubBtn: "दोस्त के साथ खेलें", hubSub: "किसी को बुलाएँ और साथ खेलें",
@@ -55,6 +66,12 @@ const MT = {
     youWon: "आप जीते!", youLost: "{name} जीता", draw: "बराबरी", wonSub: "किंग अब आपका है", lostSub: "बहुत करीब थे। फिर खेलें?",
     openCard: "कार्ड खोलें", rematch: "रीमैच", rematchWait: "{name} का इंतज़ार…", rematchAsk: "{name} रीमैच चाहता है",
     leave: "रूम छोड़ें", back: "वापस",
+    pass: "एक ही फ़ोन",
+    howTo: "कैसे खेलना है?",
+    passHint: "दो खिलाड़ी इसी फ़ोन पर बारी-बारी खेलें",
+    joinCodeTitle: "रूम कोड है?", joinCodeBtn: "रूम में जुड़ें",
+    badCode: "कोड बहुत छोटा है।", codeHint: "दोस्त से मिला 5 अक्षरों का कोड डालें",
+    p1: "खिलाड़ी 1", p2: "खिलाड़ी 2", startNow: "खेलना शुरू करें",
   },
 };
 
@@ -208,7 +225,8 @@ function applyMove(s, m, who, R, C) {
 function DotsDuel({ ui, lc, role, names, net, onFinish, S }) {
   const num = ui.num;
   const R = num(lc.rows, 3, 2, 6), C = num(lc.cols, 3, 2, 6);
-  const me = role === "host" ? 1 : 2;
+  const local = role === "local";
+  const me = role === "host" ? 1 : role === "guest" ? 2 : 0;
   const G = useRef({ st: freshBoard(R, C), turn: 1, over: false });
   const [, bump] = useState(0);
   const re = () => bump((n) => n + 1);
@@ -233,6 +251,7 @@ function DotsDuel({ ui, lc, role, names, net, onFinish, S }) {
     return true;
   };
   const place = (m) => {
+    if (local) { apply(m, G.current.turn); return; }
     if (G.current.turn !== me) return;
     if (apply(m, me)) net.send({ t: "edge", e: m });
   };
@@ -246,7 +265,7 @@ function DotsDuel({ ui, lc, role, names, net, onFinish, S }) {
   const VW = C * CELL + PAD * 2, VH = R * CELL + PAD * 2;
   const dx = (c) => PAD + c * CELL, dy = (r) => PAD + r * CELL;
   const col = (w) => (w === 1 ? "#f0cb62" : "#4fd1c5");
-  const canPlayNow = g.turn === me && !g.over;
+  const canPlayNow = !g.over && (local || g.turn === me);
 
   const edge = (t, i, x1, y1, x2, y2) => {
     const owner = (t === "h" ? st.H : st.V)[i];
@@ -276,8 +295,11 @@ function DotsDuel({ ui, lc, role, names, net, onFinish, S }) {
   for (let r = 0; r <= R; r++) for (let c = 0; c < C; c++) edges.push(edge("h", r * C + c, dx(c), dy(r), dx(c + 1), dy(r)));
   for (let r = 0; r < R; r++) for (let c = 0; c <= C; c++) edges.push(edge("v", r * (C + 1) + c, dx(c), dy(r), dx(c), dy(r + 1)));
 
-  const otherName = me === 1 ? names.guest : names.host;
-  const msg = g.over ? "" : g.turn === me ? S.yourTurn : fmt(S.theirTurn, { name: otherName });
+  const msg = g.over
+    ? ""
+    : local
+    ? fmt(S.theirTurn, { name: g.turn === 1 ? names.host : names.guest })
+    : g.turn === me ? S.yourTurn : fmt(S.theirTurn, { name: me === 1 ? names.guest : names.host });
 
   return (
     <div className="flex w-full flex-col items-center">
@@ -449,6 +471,221 @@ function MemoryDuel({ ui, lc, deck, role, names, net, onFinish, S }) {
   );
 }
 
+/* =====================================================================
+   PASS & PLAY: CHECKERS (two players, one phone — no AI, no network)
+   ===================================================================== */
+const CK_DIRS = { k: [[-1, -1], [-1, 1], [1, -1], [1, 1]], 1: [[-1, -1], [-1, 1]], 2: [[1, -1], [1, 1]] };
+let CKN = 1;
+const ckInit = () => {
+  const list = [];
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++) {
+      if ((r + c) % 2 !== 1) continue;
+      if (r < 3) list.push({ id: CKN++, r, c, p: 2, k: false });
+      else if (r > 4) list.push({ id: CKN++, r, c, p: 1, k: false });
+    }
+  return list;
+};
+const ckGrid = (list) => {
+  const g = Array.from({ length: 8 }, () => Array(8).fill(null));
+  list.forEach((p) => { g[p.r][p.c] = { p: p.p, k: p.k }; });
+  return g;
+};
+function ckChains(g, r, c, pc, caps, path, out) {
+  const dirs = pc.k ? CK_DIRS.k : CK_DIRS[pc.p];
+  let any = false;
+  for (const [dr, dc] of dirs) {
+    const mr = r + dr, mc = c + dc, tr = r + 2 * dr, tc = c + 2 * dc;
+    if (tr < 0 || tr > 7 || tc < 0 || tc > 7) continue;
+    const mid = g[mr][mc];
+    if (!mid || mid.p === pc.p || g[tr][tc] || caps.some(([x, y]) => x === mr && y === mc)) continue;
+    any = true;
+    const crowned = !pc.k && tr === (pc.p === 1 ? 0 : 7);
+    const ncaps = [...caps, [mr, mc]];
+    const npath = [...path, [tr, tc]];
+    if (crowned) out.push({ path: npath, caps: ncaps }); // a new king ends the turn
+    else ckChains(g, tr, tc, pc, ncaps, npath, out);
+  }
+  if (!any && caps.length) out.push({ path, caps });
+}
+function ckMoves(g, side) {
+  const jumps = [], steps = [];
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++) {
+      const pc = g[r][c];
+      if (!pc || pc.p !== side) continue;
+      g[r][c] = null;
+      const out = [];
+      ckChains(g, r, c, pc, [], [], out);
+      g[r][c] = pc;
+      out.forEach((o) => jumps.push({ fr: r, fc: c, ...o }));
+      for (const [dr, dc] of pc.k ? CK_DIRS.k : CK_DIRS[pc.p]) {
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && !g[nr][nc]) steps.push({ fr: r, fc: c, path: [[nr, nc]], caps: [] });
+      }
+    }
+  return jumps.length ? jumps : steps; // capturing is mandatory
+}
+
+function LocalCheckers({ ui, T, S, names, onFinish }) {
+  const { useWidth } = ui;
+  const [pieces, setPieces] = useState(ckInit);
+  const [turn, setTurn] = useState(1); // 1 = host (gold, bottom) | 2 = guest (teal, top)
+  const [sel, setSel] = useState(null);
+  const [res, setRes] = useState(null);
+  const [last, setLast] = useState(null);
+  const alive = useRef(true);
+  const boxRef = useRef(null);
+  const boxW = useWidth(boxRef, 360);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+
+  const size = Math.floor(Math.min(boxW, 400));
+  const bd = size - 16;
+  const cell = bd / 8;
+  const grid = ckGrid(pieces);
+  const moves = turn ? ckMoves(grid, turn) : [];
+  const selPiece = sel ? pieces.find((x) => x.id === sel) : null;
+  const dests = selPiece && turn ? moves.filter((m) => m.fr === selPiece.r && m.fc === selPiece.c) : [];
+  const dkey = (m) => { const e = m.path[m.path.length - 1]; return `${e[0]}-${e[1]}`; };
+  const destSet = new Set(dests.map(dkey));
+  const mustJump = moves.length > 0 && moves[0].caps.length > 0;
+
+  const finish = (w) => {
+    setRes(w); setTurn(0); setSel(null);
+    setTimeout(() => { if (alive.current) onFinish(w); }, 1200);
+  };
+
+  const doMove = (m, who) => {
+    const mover = pieces.find((x) => x.r === m.fr && x.c === m.fc);
+    if (!mover) return;
+    let cur = pieces.filter((x) => !m.caps.some(([r, c]) => x.r === r && x.c === c));
+    const end = m.path[m.path.length - 1];
+    cur = cur.map((x) => (x.id === mover.id ? { ...x, r: end[0], c: end[1] } : x));
+    if (!mover.k && end[0] === (who === 1 ? 0 : 7)) cur = cur.map((x) => (x.id === mover.id ? { ...x, k: true } : x));
+    setPieces(cur);
+    setLast({ from: [m.fr, m.fc], to: end });
+    setSel(null);
+    const opp = who === 1 ? 2 : 1;
+    if (!ckMoves(ckGrid(cur), opp).length) { finish(who === 1 ? "host" : "guest"); return; }
+    setTurn(opp);
+  };
+
+  const clickPiece = (pc) => {
+    if (!turn || res || pc.p !== turn) return;
+    if (sel === pc.id) { setSel(null); return; }
+    if (moves.some((m) => m.fr === pc.r && m.fc === pc.c)) setSel(pc.id);
+  };
+  const clickSquare = (r, c) => {
+    if (!turn || res || !selPiece) return;
+    const m = dests.find((x) => dkey(x) === `${r}-${c}`);
+    if (m) doMove(m, turn);
+  };
+
+  const n1 = pieces.filter((x) => x.p === 1).length;
+  const n2 = pieces.filter((x) => x.p === 2).length;
+  const status =
+    res === "draw" ? S.draw
+    : res ? fmt(S.youLost, { name: names[res] })
+    : fmt(S.theirTurn, { name: turn === 1 ? names.host : names.guest });
+
+  return (
+    <div className="flex w-full flex-col items-center">
+      <div className="mb-3 flex w-full max-w-[400px] items-center justify-between rounded-2xl px-4 py-2.5" style={PANEL}>
+        <div className="min-w-0 text-center">
+          <p className="max-w-[92px] truncate font-mono text-[10px] uppercase tracking-[0.15em]" style={{ color: "#f0cb62" }}>{names.host}</p>
+          <b className="font-serif text-2xl" style={{ color: "#f0cb62" }}>{n1}</b>
+        </div>
+        <motion.p key={status} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="px-2 text-center text-[12px] font-semibold">{status}</motion.p>
+        <div className="min-w-0 text-center">
+          <p className="max-w-[92px] truncate font-mono text-[10px] uppercase tracking-[0.15em]" style={{ color: "#4fd1c5" }}>{names.guest}</p>
+          <b className="font-serif text-2xl" style={{ color: "#4fd1c5" }}>{n2}</b>
+        </div>
+      </div>
+
+      <div ref={boxRef} className="w-full">
+        <div className="mx-auto" style={{ width: size, perspective: 1100 }}>
+          <motion.div
+            initial={{ rotateX: 46, opacity: 0, y: 24 }} animate={{ rotateX: 22, opacity: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 80, damping: 16 }}
+            style={{
+              background: "linear-gradient(145deg,#3a3126,#14100c)",
+              boxShadow: "0 0 0 1.5px rgba(240,203,98,.7), 0 26px 50px rgba(0,0,0,.55)",
+              padding: 8, borderRadius: 20, transformOrigin: "50% 65%",
+            }}
+          >
+            <div style={{ position: "relative", width: bd, height: bd, borderRadius: 10, overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", width: "100%", height: "100%" }}>
+                {Array.from({ length: 64 }).map((_, i) => {
+                  const r = Math.floor(i / 8), c = i % 8;
+                  const dark = (r + c) % 2 === 1;
+                  const isDest = destSet.has(`${r}-${c}`);
+                  const isLast = last && ((last.from[0] === r && last.from[1] === c) || (last.to[0] === r && last.to[1] === c));
+                  return (
+                    <div
+                      key={i} onClick={() => clickSquare(r, c)}
+                      style={{
+                        position: "relative", cursor: isDest ? "pointer" : "default",
+                        background: dark ? "linear-gradient(145deg,#33281b,#1f170f)" : "linear-gradient(145deg,#e6d6ae,#cdbb8f)",
+                        boxShadow: isLast ? "inset 0 0 0 100px rgba(240,203,98,.16)" : undefined,
+                      }}
+                    >
+                      {isDest && (
+                        <motion.span
+                          animate={{ scale: [1, 1.25, 1], opacity: [0.7, 1, 0.7] }} transition={{ repeat: Infinity, duration: 1.2 }}
+                          style={{ position: "absolute", left: "34%", top: "34%", width: "32%", height: "32%", borderRadius: "50%", background: "radial-gradient(circle, #fff3bf, #f0cb62)", boxShadow: "0 0 14px rgba(240,203,98,.95)" }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <AnimatePresence initial={false}>
+                {pieces.map((pc) => {
+                  const isSel = sel === pc.id;
+                  const mine = pc.p === 1;
+                  return (
+                    <motion.div
+                      key={pc.id}
+                      initial={false}
+                      animate={{ x: `${pc.c * 100}%`, y: `${pc.r * 100}%`, scale: 1, opacity: 1 }}
+                      exit={{ scale: 0, opacity: 0 }}
+                      transition={{ x: { type: "spring", stiffness: 240, damping: 24 }, y: { type: "spring", stiffness: 240, damping: 24 } }}
+                      onClick={() => clickPiece(pc)}
+                      style={{ position: "absolute", left: 0, top: 0, width: "12.5%", height: "12.5%", zIndex: isSel ? 5 : 1, cursor: pc.p === turn && !res ? "pointer" : "default" }}
+                    >
+                      <motion.div
+                        animate={{ y: isSel ? -cell * 0.14 : 0, scale: isSel ? 1.1 : 1 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                        style={{
+                          position: "absolute", inset: "10%", borderRadius: "50%", display: "grid", placeItems: "center",
+                          background: mine
+                            ? "radial-gradient(circle at 35% 30%, #fff3bf, #f0cb62 40%, #b8862b 82%)"
+                            : "radial-gradient(circle at 35% 30%, #8ff5ea, #1fa9a0 45%, #0b4a52)",
+                          boxShadow:
+                            (mine
+                              ? "0 1px 0 #8a6a14, 0 3px 0 #6a4e0c, 0 9px 12px rgba(0,0,0,.55)"
+                              : "0 1px 0 #0c5a60, 0 3px 0 #083e44, 0 9px 12px rgba(0,0,0,.55)") +
+                            (isSel ? ", 0 0 26px rgba(240,203,98,.9)" : ""),
+                        }}
+                      >
+                        <div style={{ position: "absolute", inset: "16%", borderRadius: "50%", boxShadow: mine ? "inset 0 0 0 2px rgba(120,80,10,.45)" : "inset 0 0 0 2px rgba(0,40,44,.55)" }} />
+                        {pc.k && <span style={{ fontSize: cell * 0.42, lineHeight: 1, color: mine ? "#5a3d08" : "#d8fffb" }}>♛</span>}
+                      </motion.div>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+
+      <p className="mt-3 text-center text-[11px] opacity-65">{mustJump && !res ? T.mustJump : S.passHint}</p>
+    </div>
+  );
+}
+
 /* =====================  HUB BUTTON  ===================== */
 export function MpHubButton({ lang, onClick }) {
   const S = MT[lang] || MT.en;
@@ -478,13 +715,16 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
   const st = soc.settings;
   const room = useRoom();
   const [view, setView] = useState(join ? "join" : "menu"); // menu|level|join|lobby|count|play|wait|result
-  const [pick, setPick] = useState({ game: null, level: null });
+  const [pick, setPick] = useState({ game: null, level: null, mode: "race" });
   const [role, setRole] = useState(null); // host | guest
   const [code, setCode] = useState("");
+  const [codeIn, setCodeIn] = useState("");
+  const [codeErr, setCodeErr] = useState("");
   const [nm, setNm] = useState(defaultName || "");
+  const [nm2, setNm2] = useState("");
   const [game, setGame] = useState(null);
   const [level, setLevel] = useState(null);
-  const [mode, setMode] = useState(null); // race | dots | memory
+  const [mode, setMode] = useState(null); // race | dots | memory | pass-dots | pass-checkers
   const [lc, setLc] = useState({});
   const [deck, setDeck] = useState(null);
   const [count, setCount] = useState(3);
@@ -501,13 +741,18 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
   const ref = useRef({});
   const F = useRef({});
 
+  const local = String(mode || "").startsWith("pass");
   const peerRole = role === "host" ? "guest" : "host";
   const peer = room.peers.find((p) => p.role === peerRole) || null;
   if (peer && peer.name) lastPeer.current = peer.name;
   const peerName = (peer && peer.name) || lastPeer.current || S.friend;
   const myName = nm.trim().slice(0, 20) || S.you;
+  const friendName = nm2.trim().slice(0, 20) || S.friend;
   const gameTitle = game && cfg[game] ? tx(cfg[game].title, lang) : "";
-  ref.current = { role, game, level, mode, view, re, cfg, ui };
+  const names = local
+    ? { host: myName, guest: friendName }
+    : { host: role === "host" ? myName : peerName, guest: role === "guest" ? myName : peerName };
+  ref.current = { role, game, level, mode, view, re, cfg, ui, pick };
 
   /* ----- actions ----- */
   const addFloat = (e) => {
@@ -524,11 +769,18 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
     setRes(null); setRe({ me: false, peer: false }); setRunKey((k) => k + 1);
     setCount(3); setView("count");
   };
-  const hostStart = (g, lv) => {
+  // two players, one phone: no room, no network
+  const beginLocal = (g, lv) => {
+    hadPeer.current = false;
+    setRole("host"); setCode(""); setErr(""); setCodeErr("");
+    begin({ game: g, level: lv, mode: g === "checkers" ? "pass-checkers" : "pass-dots", lc: (cfg[g] && cfg[g].levels[lv]) || {} });
+  };
+  const hostStart = (g, lv, mdIn) => {
     const c = ref.current.cfg;
     const u = ref.current.ui;
     const lcfg = (c[g] && c[g].levels[lv]) || {};
-    const md = DUELS.includes(g) ? g : "race";
+    const pm = (ref.current.pick && ref.current.pick.mode) || "race";
+    const md = mdIn || (pm === "duel" ? (g === "memory" ? "memory" : "dots") : "race");
     let dk = null;
     if (md === "memory") {
       const pairs = Math.min(u.MEM_CARDS.length, Math.floor((u.num(lcfg.cols, 4, 2, 6) * u.num(lcfg.rows, 3, 2, 6)) / 2));
@@ -571,16 +823,26 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
     room.leave();
     if (firstRef.current) clearTimeout(firstRef.current.timer);
     firstRef.current = null;
-    setErr(""); setRole(null); setCode(""); setRes(null); setGame(null);
-    setPick({ game: null, level: null });
+    setErr(""); setRole(null); setCode(""); setRes(null); setGame(null); setMode(null);
+    setCodeIn(""); setCodeErr("");
+    setPick({ game: null, level: null, mode: "race" });
     setView("menu");
   };
   const create = () => {
     if (!pick.game || !pick.level) return;
+    if (pick.mode === "pass") { beginLocal(pick.game, pick.level); return; }
     const c = makeCode();
     hadPeer.current = false;
     setErr(""); setRole("host"); setCode(c); setGame(pick.game); setLevel(pick.level);
     room.join(c, { name: nm.trim().slice(0, 20), role: "host" });
+    setView("lobby");
+  };
+  const joinByCode = () => {
+    const c = codeIn.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+    if (c.length < 4) { setCodeErr(S.badCode); return; }
+    setCodeErr(""); hadPeer.current = false; setErr("");
+    setRole("guest"); setCode(c); setGame(null); setLevel(null);
+    room.join(c, { name: nm.trim().slice(0, 20), role: "guest" });
     setView("lobby");
   };
   const doJoin = () => {
@@ -591,11 +853,12 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
     setView("lobby");
   };
   const wantRematch = () => {
+    if (local) { beginLocal(game, level); return; }
     setRe((x) => ({ ...x, me: true }));
     room.send({ t: "rematch" });
-    if (role === "host" && re.peer) hostStart(game, level);
+    if (role === "host" && re.peer) hostStart(game, level, mode);
   };
-  F.current = { begin, finish, hostDone, hostStart, addFloat, setErr };
+  F.current = { begin, finish, hostDone, hostStart, addFloat, setErr, beginLocal };
 
   /* ----- messages from the friend ----- */
   useEffect(() => room.on((m) => {
@@ -607,7 +870,7 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
     else if (m.t === "bye") F.current.setErr("left");
     else if (m.t === "rematch") {
       setRe((x) => ({ ...x, peer: true }));
-      if (r.role === "host" && r.re.me) F.current.hostStart(r.game, r.level);
+      if (r.role === "host" && r.re.me) F.current.hostStart(r.game, r.level, r.mode);
     }
   }), []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { if (firstRef.current) clearTimeout(firstRef.current.timer); }, []);
@@ -627,24 +890,25 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
     return () => clearInterval(id);
   }, [view]);
   useEffect(() => {
+    if (local) return;
     if (room.peers.length > 0) hadPeer.current = true;
     else if (hadPeer.current && role && !err && !["menu", "level", "join"].includes(view)) setErr("left");
   }, [room.peers.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (room.state === "error") setErr("net"); }, [room.state]);
   useEffect(() => { // a second guest that arrived later gives up its place
-    if (role !== "guest" || view !== "lobby" || err) return;
+    if (local || role !== "guest" || view !== "lobby" || err) return;
     if (room.peers.some((p) => p.role === "guest" && p.id < room.id)) {
       hadPeer.current = false;
       setErr("full");
       room.leave();
     }
   }, [room.peers]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { // no host appeared: the link is old
-    if (role !== "guest" || view !== "lobby" || err) return undefined;
+  useEffect(() => { // no host appeared: the code or link is old
+    if (local || role !== "guest" || view !== "lobby" || err) return undefined;
     if (room.peers.some((p) => p.role === "host")) return undefined;
     const id = setTimeout(() => setErr("gone"), 9000);
     return () => clearTimeout(id);
-  }, [role, view, room.peers, err]);
+  }, [role, view, room.peers, err]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { // the host did not answer after a finish
     if (view !== "wait" || role !== "guest") return undefined;
     const id = setTimeout(() => setErr("net"), 7000);
@@ -652,12 +916,12 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
   }, [view, role]);
 
   /* ----- what to draw ----- */
-  const modes = String(st.mp_modes || "race,dots,memory").split(",").map((x) => x.trim().toLowerCase());
   const list = Object.keys(cfg)
-    .filter((k) => cfg[k].enabled && (DUELS.includes(k) ? modes.includes(k) : modes.includes("race")))
+    .filter((k) => cfg[k].enabled)
     .filter((k) => LEVELS.some((l) => cfg[k].levels[l] && cfg[k].levels[l].enabled !== false))
     .sort((a, b) => (cfg[a].sort ?? 0) - (cfg[b].sort ?? 0));
   const lvlsOf = (k) => (cfg[k] ? LEVELS.filter((l) => cfg[k].levels[l] && cfg[k].levels[l].enabled !== false) : []);
+  const hintOf = (k) => (PASS.includes(k) ? S.passHint : DUELS.includes(k) ? S.duelHint : S.raceHint);
   const joinBad = view === "join" && !(join && cfg[join.g] && cfg[join.g].enabled);
   const inviteUrl = (() => {
     if (!code) return "";
@@ -666,12 +930,6 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
     if (nm.trim()) q.set("by", nm.trim().slice(0, 20));
     return `${base}?${q.toString()}`;
   })();
-  const names = {
-    host: role === "host" ? myName : peerName,
-    guest: role === "guest" ? myName : peerName,
-  };
-  const meCol = role === "host" ? "#f0cb62" : "#4fd1c5";
-  const peerCol = role === "host" ? "#4fd1c5" : "#f0cb62";
   const title = (txt) => <h2 className="font-serif text-3xl font-bold" style={goldText}>{txt}</h2>;
   const nameBox = (
     <label className="mt-5 block w-full text-left">
@@ -681,6 +939,24 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
         className="mt-1 w-full rounded-xl px-3 py-2.5 text-base outline-none" style={{ ...PANEL, color: "#efe8d6" }}
       />
     </label>
+  );
+  const twoNames = (
+    <>
+      <label className="mt-5 block w-full text-left">
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: "#f0cb62" }}>{S.p1}</span>
+        <input
+          value={nm} onChange={(e) => setNm(e.target.value.slice(0, 20))} maxLength={20}
+          className="mt-1 w-full rounded-xl px-3 py-2.5 text-base outline-none" style={{ ...PANEL, color: "#efe8d6" }}
+        />
+      </label>
+      <label className="mt-3 block w-full text-left">
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: "#4fd1c5" }}>{S.p2}</span>
+        <input
+          value={nm2} onChange={(e) => setNm2(e.target.value.slice(0, 20))} maxLength={20}
+          className="mt-1 w-full rounded-xl px-3 py-2.5 text-base outline-none" style={{ ...PANEL, color: "#efe8d6" }}
+        />
+      </label>
+    </>
   );
 
   if (err || joinBad) {
@@ -694,7 +970,7 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
     );
   }
 
-  /* menu */
+  /* menu: every game that can be played with a friend + join by code */
   if (view === "menu")
     return (
       <div className="mx-auto max-w-[480px]">
@@ -705,7 +981,7 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
         <div className="mt-5 space-y-3">
           {list.map((k, i) => (
             <motion.button
-              key={k} type="button" onClick={() => { setPick({ game: k, level: null }); setView("level"); }}
+              key={k} type="button" onClick={() => { setPick({ game: k, level: null, mode: defMode(k) }); setView("level"); }}
               initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.06 * i, type: "spring", stiffness: 160, damping: 18 }}
               whileHover={{ scale: 1.02, x: 4 }} whileTap={{ scale: 0.98 }}
               className="flex w-full items-center gap-4 rounded-2xl p-4 text-left" style={{ ...PANEL, boxShadow: "inset 0 0 0 1px rgba(240,203,98,.4), 0 10px 24px rgba(0,0,0,.4)" }}
@@ -713,24 +989,54 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
               <div className="grid h-14 w-16 shrink-0 place-items-center"><Icon kind={k} /></div>
               <div className="min-w-0 flex-1">
                 <b className="block font-serif text-lg leading-tight" style={goldText}>{tx(cfg[k].title, lang)}</b>
-                <span className="mt-1 block text-[12px] opacity-70">{DUELS.includes(k) ? S.duelHint : S.raceHint}</span>
+                <span className="mt-1 block text-[12px] opacity-70">{hintOf(k)}</span>
               </div>
-              <span
-                className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
-                style={DUELS.includes(k) ? { background: GOLD, color: "#3b2506" } : { color: "#efe8d6", ...chipStyle }}
-              >
-                {DUELS.includes(k) ? S.duel : S.race}
+              <span className="flex shrink-0 flex-col items-end gap-1">
+                {modesOf(k).map((m) => (
+                  <span
+                    key={m}
+                    className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                    style={m === "race" ? { color: "#efe8d6", ...chipStyle } : { background: GOLD, color: "#3b2506" }}
+                  >
+                    {m === "race" ? S.race : m === "duel" ? S.duel : S.pass}
+                  </span>
+                ))}
               </span>
             </motion.button>
           ))}
         </div>
+
+        <div className="mt-5 rounded-2xl p-4" style={PANEL}>
+          <b className="font-serif text-base" style={goldText}>{S.joinCodeTitle}</b>
+          <p className="mt-0.5 text-[11px] opacity-70">{S.codeHint}</p>
+          <div className="mt-2 flex items-stretch gap-2">
+            <input
+              value={codeIn}
+              onChange={(e) => { setCodeIn(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5)); setCodeErr(""); }}
+              placeholder="ABCDE" maxLength={5} autoCapitalize="characters" autoComplete="off" spellCheck={false}
+              className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-center font-mono text-xl tracking-[0.35em] outline-none"
+              style={{ ...PANEL, color: "#efe8d6" }}
+            />
+            <Btn gold disabled={codeIn.length < 4} onClick={joinByCode}>{S.joinCodeBtn}</Btn>
+          </div>
+          {codeErr && <p className="mt-2 text-[11px]" style={{ color: "#ff8a8a" }}>{codeErr}</p>}
+          <label className="mt-3 block">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: "#c9972f" }}>{S.yourName}</span>
+            <input
+              value={nm} onChange={(e) => setNm(e.target.value.slice(0, 20))} maxLength={20}
+              className="mt-1 w-full rounded-xl px-3 py-2.5 text-base outline-none" style={{ ...PANEL, color: "#efe8d6" }}
+            />
+          </label>
+        </div>
+
         <div className="mt-6 text-center"><Btn onClick={onHub}>← {S.back}</Btn></div>
       </div>
     );
 
-  /* level + name */
+  /* level + how to play + name(s) */
   if (view === "level" && pick.game && cfg[pick.game]) {
     const gk = pick.game;
+    const ms = modesOf(gk);
     return (
       <div className="mx-auto max-w-[420px]">
         <div className="text-center">
@@ -755,10 +1061,31 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
             </motion.button>
           ))}
         </div>
-        {nameBox}
+
+        <p className="mt-5 text-center font-mono text-[10px] uppercase tracking-[0.22em]" style={{ color: "#c9972f" }}>{S.howTo}</p>
+        <div className="mt-2 flex flex-wrap justify-center gap-2">
+          {ms.map((m) => (
+            <motion.button
+              key={m} type="button" onClick={() => setPick({ ...pick, mode: m })}
+              whileTap={{ scale: 0.96 }}
+              className="rounded-full px-4 py-2 text-[12px] font-semibold"
+              style={pick.mode === m ? { background: GOLD, color: "#3b2506" } : { color: "#efe8d6", ...chipStyle }}
+            >
+              {m === "race" ? S.race : m === "duel" ? S.duel : S.pass}
+            </motion.button>
+          ))}
+        </div>
+        <p className="mt-1.5 text-center text-[11px] opacity-70">
+          {pick.mode === "pass" ? S.passHint : pick.mode === "duel" ? S.duelHint : S.raceHint}
+        </p>
+
+        {pick.mode === "pass" ? twoNames : nameBox}
+
         <div className="mt-5 flex justify-center gap-2">
           <Btn onClick={() => setView("menu")}>← {S.back}</Btn>
-          <Btn gold disabled={!pick.level} onClick={create}>{S.create} →</Btn>
+          <Btn gold disabled={!pick.level} onClick={create}>
+            {pick.mode === "pass" ? S.startNow : S.create} →
+          </Btn>
         </div>
       </div>
     );
@@ -779,18 +1106,20 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
       </div>
     );
 
-  /* lobby (host waits for the friend, the friend waits for the host) */
+  /* lobby */
   if (view === "lobby") {
     const guest = room.peers.find((p) => p.role === "guest");
     const host = room.peers.find((p) => p.role === "host");
+    const sub = [gameTitle, level ? T[level] : ""].filter(Boolean).join(" · ");
     return (
       <div className="mx-auto max-w-[440px] text-center">
         {title(S.lobby)}
-        <p className="mt-1 text-sm opacity-70">{gameTitle} · {T[level]}</p>
+        {sub ? <p className="mt-1 text-sm opacity-70">{sub}</p> : null}
         {role === "host" && (
           <div className="mt-5 rounded-2xl p-4" style={PANEL}>
             <p className="font-mono text-[10px] uppercase tracking-[0.3em]" style={{ color: "#c9972f" }}>{S.code}</p>
             <b className="mt-1 block font-mono text-4xl tracking-[0.35em]" style={goldText}>{code}</b>
+            <p className="mt-1 text-[11px] opacity-70">{S.codeHint}</p>
             <InviteBar S={S} url={inviteUrl} text={fmt(S.inviteText, { game: gameTitle })} />
           </div>
         )}
@@ -825,7 +1154,7 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
       <div className="grid min-h-[300px] place-items-center text-center">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.3em]" style={{ color: "#c9972f" }}>
-            {myName} {S.vs} {peerName}
+            {names.host} {S.vs} {names.guest}
           </p>
           <motion.b
             key={count} initial={{ scale: 2.2, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 180, damping: 14 }}
@@ -849,29 +1178,38 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
 
   /* result */
   if (view === "result" && res) {
-    const won = res.winner === role;
     const draw = res.winner === "draw";
-    const canOpen = won || (!!st.mp_loser_opens && !draw);
+    const won = res.winner === role;
+    const canOpen = local || won || (!!st.mp_loser_opens && !draw);
+    const headline = draw
+      ? S.draw
+      : local
+      ? fmt(S.youLost, { name: names[res.winner] || S.friend })
+      : won ? S.youWon : fmt(S.youLost, { name: peerName });
     return (
       <div className="relative mx-auto max-w-[420px] text-center">
         {art && (
           <motion.img
             src={art} alt="" draggable={false} className="kg-float mx-auto"
-            initial={{ scale: 0.3, rotateY: 540, opacity: 0 }} animate={{ scale: 1, rotateY: 0, opacity: won || draw ? 1 : 0.55 }}
+            initial={{ scale: 0.3, rotateY: 540, opacity: 0 }} animate={{ scale: 1, rotateY: 0, opacity: canOpen ? 1 : 0.55 }}
             transition={{ type: "spring", stiffness: 60, damping: 13 }}
             style={{ height: 150, filter: "drop-shadow(0 18px 24px rgba(0,0,0,.6))" }}
           />
         )}
-        <div className="mt-4">{title(draw ? S.draw : won ? S.youWon : fmt(S.youLost, { name: peerName }))}</div>
-        {!draw && <p className="mt-1 text-sm opacity-75">{won ? S.wonSub : S.lostSub}</p>}
+        <div className="mt-4">{title(headline)}</div>
+        {!draw && !local && <p className="mt-1 text-sm opacity-75">{won ? S.wonSub : S.lostSub}</p>}
         <div className="mt-5 flex flex-wrap justify-center gap-2">
           {canOpen && <Btn gold onClick={onOpenCard}>{S.openCard} →</Btn>}
-          <Btn gold={!canOpen} disabled={re.me} onClick={wantRematch}>
-            {re.me ? fmt(S.rematchWait, { name: peerName }) : re.peer ? fmt(S.rematchAsk, { name: peerName }) : S.rematch}
-          </Btn>
+          {local ? (
+            <Btn gold={!canOpen} onClick={() => beginLocal(game, level)}>{S.rematch}</Btn>
+          ) : (
+            <Btn gold={!canOpen} disabled={re.me} onClick={wantRematch}>
+              {re.me ? fmt(S.rematchWait, { name: peerName }) : re.peer ? fmt(S.rematchAsk, { name: peerName }) : S.rematch}
+            </Btn>
+          )}
           <Btn onClick={leaveRoom}>{S.leave}</Btn>
         </div>
-        <Reactions onEmo={sendEmo} floats={floats} />
+        {!local && <Reactions onEmo={sendEmo} floats={floats} />}
       </div>
     );
   }
@@ -880,11 +1218,11 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
   return (
     <div className="relative mx-auto w-full max-w-[520px]">
       <div className="mb-3 flex items-center justify-between rounded-2xl px-3 py-2 text-[12px]" style={PANEL}>
-        <span className="max-w-[110px] truncate font-semibold" style={{ color: meCol }}>{myName}</span>
+        <span className="max-w-[110px] truncate font-semibold" style={{ color: "#f0cb62" }}>{names.host}</span>
         <span className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: "#c9972f" }}>
           {S.vs}{mode === "race" ? ` · ${fmtTime(elapsed)}` : ""}
         </span>
-        <span className="max-w-[110px] truncate font-semibold" style={{ color: peerCol }}>{peerName}</span>
+        <span className="max-w-[110px] truncate font-semibold" style={{ color: "#4fd1c5" }}>{names.guest}</span>
       </div>
       {mode === "race" && <p className="mb-3 text-center text-[11px] opacity-70">{fmt(S.racing, { name: peerName })}</p>}
 
@@ -895,8 +1233,14 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
       {mode === "memory" && deck && (
         <MemoryDuel key={runKey} ui={ui} lc={lc} deck={deck} role={role} names={names} net={room} S={S} onFinish={(w) => F.current.finish(w)} />
       )}
+      {mode === "pass-dots" && (
+        <DotsDuel key={runKey} ui={ui} lc={lc} role="local" names={names} net={NULL_NET} S={S} onFinish={(w) => finish(w)} />
+      )}
+      {mode === "pass-checkers" && (
+        <LocalCheckers key={runKey} ui={ui} T={T} S={S} names={names} onFinish={(w) => finish(w)} />
+      )}
 
-      <Reactions onEmo={sendEmo} floats={floats} />
+      {!local && <Reactions onEmo={sendEmo} floats={floats} />}
     </div>
   );
 }
