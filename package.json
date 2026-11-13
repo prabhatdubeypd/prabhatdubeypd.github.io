@@ -9,16 +9,18 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "prebuild": "node scripts/inject-meta.mjs"
-    
   },
   "dependencies": {
     "@microsoft/clarity": "^1.0.2",
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
     "@supabase/supabase-js": "^2.118.0",
     "@tailwindcss/vite": "^4.3.4",
     "framer-motion": "^14.9.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "tailwindcss": "^4.3.4"
+    "tailwindcss": "^4.3.4",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { RoundedBox, Environment } from "@react-three/drei";
+import * as THREE from "three";
 
 const LT = {
   en: {
@@ -8,6 +11,8 @@ const LT = {
     notYours: "That is {name}'s token", needSix: "You need a 6 to leave the base", alreadyHome: "That token is already home",
     tooFar: "That token cannot move {d} steps (you need an exact roll to reach home)",
     rolled: "rolled {d}", out: "left the base", captured: "captured a token!", home: "reached home!", nomove: "no move possible",
+    chooseColor: "Choose your color", chooseSub: "Your tokens start in this corner", pickColorFirst: "Choose your color to start",
+    names: ["Green", "Yellow", "Blue", "Red"],
   },
   hi: {
     roll: "पासा फेंकने के लिए छुएँ", rolling: "पासा घूम रहा है…", pickToken: "चलाने के लिए चमकती गोटी छुएँ", noMove: "कोई चाल संभव नहीं",
@@ -15,6 +20,8 @@ const LT = {
     notYours: "यह {name} की गोटी है", needSix: "बेस से निकलने के लिए 6 चाहिए", alreadyHome: "यह गोटी पहले ही घर पहुँच चुकी है",
     tooFar: "यह गोटी {d} कदम नहीं चल सकती (घर के लिए सटीक अंक चाहिए)",
     rolled: "ने {d} फेंका", out: "गोटी बेस से निकली", captured: "ने गोटी पकड़ी!", home: "गोटी घर पहुँची!", nomove: "कोई चाल संभव नहीं",
+    chooseColor: "अपना रंग चुनें", chooseSub: "आपकी गोटियाँ इसी कोने से शुरू होंगी", pickColorFirst: "शुरू करने के लिए रंग चुनें",
+    names: ["हरा", "पीला", "नीला", "लाल"],
   },
 };
 
@@ -23,13 +30,13 @@ export const HOW = {
     "2 to 4 players race 4 tokens each around the board. Tap the dice on your turn.",
     "You need a 6 to bring a token out of the base. A 6, a capture, or reaching home gives you another roll.",
     "Landing on an enemy token sends it back to its base, unless it stands on a star or a start square.",
-    "Enter your colored lane and reach the center with an exact roll. The first player to bring all 4 tokens home wins. Online, your own base is always shown top-left.",
+    "Tap a glowing token (or its landing marker) to move it. Enter your colored lane and reach the center with an exact roll. The first player to bring all 4 tokens home wins. Your own base is always shown at the bottom-left of your screen.",
   ],
   hi: [
     "2 से 4 खिलाड़ी 4-4 गोटियों से बोर्ड का चक्कर लगाते हैं। अपनी बारी पर पासा छुएँ।",
     "बेस से गोटी निकालने के लिए 6 चाहिए। 6, गोटी पकड़ना या घर पहुँचना, इनसे दोबारा पासा मिलता है।",
     "दुश्मन की गोटी पर उतरें तो वह बेस में लौट जाती है, पर तारे या स्टार्ट वाले खाने पर वह सुरक्षित है।",
-    "अपनी रंगीन लेन में जाकर सटीक अंक से बीच में पहुँचें। जो पहले चारों गोटियाँ घर पहुँचाए वही जीतता है। ऑनलाइन में आपका अपना बेस हमेशा ऊपर-बाएँ दिखता है।",
+    "चमकती गोटी (या उसका लैंडिंग निशान) छुएँ और वह चल पड़ेगी। अपनी रंगीन लेन में जाकर सटीक अंक से बीच में पहुँचें। जो पहले चारों गोटियाँ घर पहुँचाए वही जीतता है। आपका अपना बेस हमेशा आपकी स्क्रीन के नीचे-बाएँ दिखता है।",
   ],
 };
 
@@ -60,21 +67,22 @@ const FINP = [
   [[6.3, 8.55], [6.77, 8.55], [7.23, 8.55], [7.7, 8.55]],
   [[8.55, 6.3], [8.55, 6.77], [8.55, 7.23], [8.55, 7.7]],
 ];
-const CORNERS = { 2: [0, 2], 3: [0, 1, 2], 4: [0, 1, 2, 3] };
 const CORNER_XY = [[0, 0], [9, 0], [9, 9], [0, 9]];
 const TRI = ["6,6 6,9 7.5,7.5", "6,6 9,6 7.5,7.5", "9,6 9,9 7.5,7.5", "6,9 9,9 7.5,7.5"];
+// the colour of each corner, like Ludo King: green top-left, yellow top-right, blue bottom-right, red bottom-left
+const CC = ["#1fa04a", "#f7c600", "#1e9be9", "#e0302c"];
+// little arrows pointing into each colour's lane: [row, col, glyph]
+const ARROWS = [[7, 0, "→"], [0, 7, "↓"], [7, 14, "←"], [14, 7, "↑"]];
 // p = -1 in base, 0..50 on the ring (from your start), 51..55 your lane, 56 home
 const posOf = (cr, p, i) => (p < 0 ? BASEP[cr][i] : p <= 50 ? RING[(STARTS[cr] + p) % 52] : p <= 55 ? LANE[cr][p - 51] : FINP[cr][i]);
 const rot = (r, c, k) => (k === 0 ? [r, c] : k === 1 ? [14 - c, r] : k === 2 ? [14 - r, 14 - c] : [c, 14 - r]); // k quarter turns counter-clockwise
 const movablesOf = (arr, d) => arr.map((p, i) => ((p === -1 && d === 6) || (p >= 0 && p < 56 && p + d <= 56) ? i : -1)).filter((i) => i >= 0);
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
-const TILT = 20;
-// cube orientation [rotateX, rotateY] that brings each face to the front
-const FACE = { 1: [0, 0], 2: [90, 0], 3: [0, -90], 4: [0, 90], 5: [-90, 0], 6: [0, 180] };
-const CUBE_FACES = [
-  [1, "translateZ(H)"], [6, "rotateY(180deg) translateZ(H)"], [3, "rotateY(90deg) translateZ(H)"],
-  [4, "rotateY(-90deg) translateZ(H)"], [5, "rotateX(90deg) translateZ(H)"], [2, "rotateX(-90deg) translateZ(H)"],
-];
+// which corner a seat gets: seat "me" gets the chosen corner, the others follow clockwise (2 players sit opposite)
+const cornerOf = (s, base, me, n) => {
+  const rel = (s - me + n) % n;
+  return (base + (n === 2 ? rel * 2 : rel)) % 4;
+};
 // lighten (a > 0) or darken (a < 0) a #rrggbb colour
 const mix = (hex, a) => {
   if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex;
@@ -127,56 +135,297 @@ function botPick(level, who, tok, cor, mv, d) {
   return rnd(best);
 }
 
-/* ---------------- a real 3D dice: it tumbles and lands on the rolled face ---------------- */
-function Die3D({ v, n, rolling, color, onClick, disabled, size = 68 }) {
-  const [fx, fy] = FACE[v] || FACE[1];
-  const rx = fx + 720 * n, ry = fy + 1080 * n; // always spins forward, ends on the right face
-  const H = `${size / 2}px`;
+
+/* ============================================================
+   PREMIUM 3D LUDO DICE
+============================================================ */
+
+const DICE_FACE_ROTATIONS = {
+  1: [0, 0, 0],
+  2: [0, -Math.PI / 2, 0],
+  3: [Math.PI / 2, 0, 0],
+  4: [-Math.PI / 2, 0, 0],
+  5: [0, Math.PI / 2, 0],
+  6: [0, Math.PI, 0],
+};
+
+const DICE_PIPS = {
+  1: [[0, 0]],
+  2: [[-0.32, 0.32], [0.32, -0.32]],
+  3: [[-0.32, 0.32], [0, 0], [0.32, -0.32]],
+  4: [[-0.32, 0.32], [0.32, 0.32], [-0.32, -0.32], [0.32, -0.32]],
+  5: [[-0.32, 0.32], [0.32, 0.32], [0, 0], [-0.32, -0.32], [0.32, -0.32]],
+  6: [[-0.32, 0.35], [0.32, 0.35], [-0.32, 0], [0.32, 0], [-0.32, -0.35], [0.32, -0.35]],
+};
+
+/* Individual premium pip */
+function DicePip({ position }) {
   return (
-    <div onClick={onClick} style={{ position: "relative", width: size, height: size, cursor: disabled ? "default" : "pointer", flexShrink: 0 }}>
-      <motion.div
-        animate={{ opacity: disabled ? 0.18 : [0.35, 0.9, 0.35], scale: disabled ? 1 : [1, 1.08, 1] }}
-        transition={disabled ? { duration: 0.3 } : { repeat: Infinity, duration: 1.4, ease: "easeInOut" }}
-        style={{ position: "absolute", inset: -9, borderRadius: size * 0.34, boxShadow: `0 0 0 2px ${color}, 0 0 30px ${color}` }}
+    <mesh position={position} castShadow>
+      <sphereGeometry args={[0.085, 32, 32]} />
+      <meshPhysicalMaterial
+        color="#11151d"
+        roughness={0.28}
+        metalness={0.04}
+        clearcoat={0.65}
+        clearcoatRoughness={0.18}
       />
-      <motion.div
-        animate={rolling ? { y: [0, -44 - (n % 2) * 0.01, 0], scale: [1, 1.22, 1] } : { y: 0, scale: 1 }}
-        transition={{ duration: rolling ? 0.9 : 0.25, ease: "easeInOut" }}
-        whileHover={!disabled && !rolling ? { scale: 1.07 } : undefined} whileTap={!disabled ? { scale: 0.93 } : undefined}
-        style={{ width: size, height: size, perspective: 520 }}
-      >
-        <motion.div
-          initial={false}
-          animate={{ rotateX: rx, rotateY: ry }}
-          transition={{ duration: 0.9, ease: [0.15, 0.7, 0.25, 1] }}
-          style={{ position: "relative", width: size, height: size, transformStyle: "preserve-3d" }}
-        >
-          {CUBE_FACES.map(([val, tf]) => (
-            <div
-              key={val}
-              style={{
-                position: "absolute", inset: 0, transform: tf.replace(/H/g, H), backfaceVisibility: "hidden",
-                borderRadius: size * 0.2, padding: size * 0.15, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gridTemplateRows: "repeat(3,1fr)",
-                background: "linear-gradient(145deg,#fffdf6,#e6d9b8)",
-                boxShadow: "inset 0 0 0 1px rgba(120,90,30,.25), inset 0 -5px 8px rgba(0,0,0,.14), inset 0 4px 6px rgba(255,255,255,.8)",
-              }}
-            >
-              {Array.from({ length: 9 }).map((_, i) => (
-                <span key={i} style={{ display: "grid", placeItems: "center" }}>
-                  {PIPS[val].includes(i) && (
-                    <i style={{ width: size * 0.18, height: size * 0.18, borderRadius: "50%", background: val === 1 ? "radial-gradient(circle at 35% 30%, #ff7a6a, #b3261e)" : "radial-gradient(circle at 35% 30%, #4a4545, #121010)", boxShadow: "inset 0 -2px 2px rgba(0,0,0,.4), 0 1px 0 rgba(255,255,255,.6)" }} />
-                  )}
-                </span>
-              ))}
-            </div>
-          ))}
-        </motion.div>
-      </motion.div>
-    </div>
+    </mesh>
   );
 }
 
-/* ---------------- gradients for the board and the pawns ---------------- */
+/* Individual face */
+function DiceFace({ number, position, rotation }) {
+  return (
+    <group position={position} rotation={rotation}>
+      {DICE_PIPS[number].map(([x, y], i) => (
+        <DicePip
+          key={`${number}-${i}`}
+          position={[x, y, 0.012]}
+        />
+      ))}
+    </group>
+  );
+}
+
+/* Physical dice cube */
+function RealDice({ value, rolling }) {
+  const ref = useRef(null);
+  const elapsed = useRef(0);
+  const start = useRef([0, 0, 0]);
+  const finished = useRef(true);
+
+  const duration = 0.82;
+
+  useEffect(() => {
+    if (!rolling || !ref.current) return;
+
+    elapsed.current = 0;
+    finished.current = false;
+
+    start.current = [
+      Math.random() * Math.PI * 2,
+      Math.random() * Math.PI * 2,
+      Math.random() * Math.PI * 2,
+    ];
+
+    ref.current.rotation.set(...start.current);
+    ref.current.position.set(0, 0, 0);
+    ref.current.scale.set(1, 1, 1);
+  }, [rolling, value]);
+
+  useFrame((_, delta) => {
+    if (!ref.current || finished.current || !rolling) return;
+
+    elapsed.current += Math.min(delta, 0.05);
+
+    const t = Math.min(elapsed.current / duration, 1);
+
+    // Smooth cubic easing
+    const ease = t * t * (3 - 2 * t);
+
+    const target = DICE_FACE_ROTATIONS[value] || DICE_FACE_ROTATIONS[1];
+
+    // Several complete physical rotations, followed by an exact landing
+    const turns = [
+      Math.PI * 6,
+      -Math.PI * 8,
+      Math.PI * 4,
+    ];
+
+    ref.current.rotation.set(
+      start.current[0] + (target[0] + turns[0] - start.current[0]) * ease,
+      start.current[1] + (target[1] + turns[1] - start.current[1]) * ease,
+      start.current[2] + (target[2] + turns[2] - start.current[2]) * ease
+    );
+
+    // Natural jumping and landing
+    const bounce = Math.sin(t * Math.PI);
+    ref.current.position.y = bounce * 0.36;
+
+    // Very subtle landing compression
+    const squash = 1 - bounce * 0.045;
+    ref.current.scale.set(squash, 1 + bounce * 0.06, squash);
+
+    if (t >= 1) {
+      // Exact final orientation: result faces the player
+      ref.current.rotation.set(...target);
+      ref.current.position.set(0, 0, 0);
+      ref.current.scale.set(1, 1, 1);
+      finished.current = true;
+    }
+  });
+
+  return (
+    <group ref={ref}>
+      <RoundedBox
+        args={[1.65, 1.65, 1.65]}
+        radius={0.19}
+        smoothness={8}
+        castShadow
+        receiveShadow
+      >
+        <meshPhysicalMaterial
+          color="#ffffff"
+          roughness={0.22}
+          metalness={0.015}
+          clearcoat={1}
+          clearcoatRoughness={0.08}
+          reflectivity={0.85}
+        />
+      </RoundedBox>
+
+      {/* Front: 1 */}
+      <DiceFace number={1} position={[0, 0, 0.831]} rotation={[0, 0, 0]} />
+
+      {/* Back: 6 */}
+      <DiceFace number={6} position={[0, 0, -0.831]} rotation={[0, Math.PI, 0]} />
+
+      {/* Right: 2 */}
+      <DiceFace number={2} position={[0.831, 0, 0]} rotation={[0, Math.PI / 2, 0]} />
+
+      {/* Left: 5 */}
+      <DiceFace number={5} position={[-0.831, 0, 0]} rotation={[0, -Math.PI / 2, 0]} />
+
+      {/* Top: 3 */}
+      <DiceFace number={3} position={[0, 0.831, 0]} rotation={[-Math.PI / 2, 0, 0]} />
+
+      {/* Bottom: 4 */}
+      <DiceFace number={4} position={[0, -0.831, 0]} rotation={[Math.PI / 2, 0, 0]} />
+    </group>
+  );
+}
+
+/* 3D lighting and camera */
+function DiceScene({ value, rolling }) {
+  return (
+    <Canvas
+      camera={{ position: [0, 0, 5.2], fov: 30 }}
+      dpr={[1, 2]}
+      gl={{
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance",
+      }}
+      shadows
+      style={{ width: "100%", height: "100%" }}
+    >
+      <ambientLight intensity={0.85} />
+
+      <directionalLight
+        position={[3, 5, 5]}
+        intensity={3}
+        castShadow
+      />
+
+      <directionalLight position={[-4, 2, 3]} intensity={1.8} />
+      <pointLight position={[0, 4, 2]} intensity={1.5} />
+      <pointLight position={[0, -3, 3]} intensity={0.5} />
+
+      <Environment preset="studio" />
+
+      <RealDice value={value} rolling={rolling} />
+    </Canvas>
+  );
+}
+
+/* Premium dice component */
+function Die({
+  v,
+  rolling,
+  color,
+  onClick,
+  disabled,
+  size = 76,
+}) {
+  return (
+    <motion.div
+      whileTap={!disabled ? { scale: 0.94 } : {}}
+      onClick={onClick}
+      style={{
+        position: "relative",
+        width: size + 38,
+        height: size + 38,
+        display: "grid",
+        placeItems: "center",
+        flexShrink: 0,
+        cursor: disabled ? "default" : "pointer",
+        WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      {/* Outer glow */}
+      <motion.div
+        animate={
+          rolling
+            ? { opacity: [0.35, 0.9, 0.35], scale: [0.92, 1.12, 0.92] }
+            : disabled
+              ? { opacity: 0.15, scale: 1 }
+              : { opacity: [0.35, 0.7, 0.35], scale: [0.96, 1.05, 0.96] }
+        }
+        transition={{
+          duration: rolling ? 0.45 : 1.8,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+        style={{
+          position: "absolute",
+          width: size + 16,
+          height: size + 16,
+          borderRadius: 26,
+          border: `2px solid ${color}`,
+          boxShadow: `0 0 16px ${color}88, 0 0 36px ${color}55`,
+        }}
+      />
+
+      {/* Elevated dice pedestal */}
+      <div
+        style={{
+          position: "relative",
+          width: size,
+          height: size,
+          zIndex: 2,
+          borderRadius: 21,
+          background: "linear-gradient(145deg,#233653,#0c1426)",
+          border: "1px solid rgba(255,255,255,.22)",
+          boxShadow: `
+            0 7px 0 #080e19,
+            0 12px 22px rgba(0,0,0,.48),
+            inset 0 1px 0 rgba(255,255,255,.2),
+            0 0 20px ${color}44
+          `,
+        }}
+      >
+        <DiceScene value={v} rolling={rolling} />
+      </div>
+
+      {/* Rolling indicator */}
+      <AnimatePresence>
+        {rolling && (
+          <motion.div
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 5 }}
+            style={{
+              position: "absolute",
+              bottom: -15,
+              fontSize: 9,
+              fontWeight: 900,
+              letterSpacing: 2,
+              color: "#fff",
+              textShadow: `0 0 8px ${color}`,
+              whiteSpace: "nowrap",
+            }}
+          >
+            ROLLING
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+
+/* ---------------- the token: a map-pin like in Ludo King ---------------- */
 function LudoDefs({ cols }) {
   return (
     <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true" focusable="false">
@@ -184,10 +433,10 @@ function LudoDefs({ cols }) {
         {cols.map((c, s) => (
           <g key={s}>
             <radialGradient id={`lh${s}`} cx=".36" cy=".3" r=".8">
-              <stop offset="0" stopColor="#fff" /><stop offset=".3" stopColor={mix(c, 0.35)} /><stop offset=".7" stopColor={c} /><stop offset="1" stopColor={mix(c, -0.45)} />
+              <stop offset="0" stopColor={mix(c, 0.55)} /><stop offset=".45" stopColor={c} /><stop offset="1" stopColor={mix(c, -0.35)} />
             </radialGradient>
             <linearGradient id={`lb${s}`} x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor={mix(c, 0.45)} /><stop offset=".4" stopColor={c} /><stop offset="1" stopColor={mix(c, -0.5)} />
+              <stop offset="0" stopColor={mix(c, 0.35)} /><stop offset=".5" stopColor={c} /><stop offset="1" stopColor={mix(c, -0.4)} />
             </linearGradient>
           </g>
         ))}
@@ -195,31 +444,101 @@ function LudoDefs({ cols }) {
     </svg>
   );
 }
-function Pawn({ s, color }) {
-  const edge = mix(color, -0.6);
+function Pin({ s, color }) {
+  const edge = mix(color, -0.65);
+
+  const body =
+    "M30 76 C27 66 6 47 6 27 A24 24 0 0 1 54 27 C54 47 33 66 30 76 Z";
+
   return (
-    <svg viewBox="0 0 60 90" width="100%" height="100%" style={{ display: "block", overflow: "visible" }}>
-      <ellipse cx="30" cy="80" rx="22" ry="7.5" fill={`url(#lb${s})`} stroke={edge} strokeWidth="1.6" />
-      <path d="M15 80 Q20 57 25 46 H35 Q40 57 45 80 Z" fill={`url(#lb${s})`} stroke={edge} strokeWidth="1.6" strokeLinejoin="round" />
-      <ellipse cx="30" cy="47" rx="11.5" ry="4.2" fill={`url(#lb${s})`} stroke={edge} strokeWidth="1.6" />
-      <circle cx="30" cy="30" r="16" fill={`url(#lh${s})`} stroke={edge} strokeWidth="1.6" />
-      <ellipse cx="24" cy="23" rx="5.5" ry="3.6" fill="#fff" opacity=".6" transform="rotate(-28 24 23)" />
+    <svg
+      viewBox="0 0 60 80"
+      width="100%"
+      height="100%"
+      style={{
+        display: "block",
+        overflow: "visible",
+        filter: "drop-shadow(0 2px 2px rgba(0,0,0,.38))",
+      }}
+    >
+      {/* deep outer edge */}
+      <path
+        d={body}
+        fill="none"
+        stroke="rgba(0,0,0,.45)"
+        strokeWidth="8"
+        strokeLinejoin="round"
+      />
+
+      {/* main body */}
+      <path
+        d={body}
+        fill={`url(#lb${s})`}
+        stroke="#ffffff"
+        strokeWidth="2.8"
+        strokeLinejoin="round"
+      />
+
+      {/* inner glossy ring */}
+      <circle
+        cx="30"
+        cy="27"
+        r="14"
+        fill="rgba(255,255,255,.22)"
+        stroke="#ffffff"
+        strokeOpacity=".72"
+        strokeWidth="1.2"
+      />
+
+      {/* center */}
+      <circle
+        cx="30"
+        cy="27"
+        r="9"
+        fill={`url(#lh${s})`}
+      />
+
+      {/* glossy reflection */}
+      <ellipse
+        cx="25"
+        cy="14"
+        rx="7"
+        ry="3.4"
+        fill="#ffffff"
+        opacity=".6"
+        transform="rotate(-25 25 14)"
+      />
+
+      {/* tiny secondary reflection */}
+      <circle
+        cx="36"
+        cy="33"
+        r="2.2"
+        fill="#ffffff"
+        opacity=".18"
+      />
     </svg>
   );
 }
 
 /* seats: [{ id?, name, bot? }]  (2 to 4).  mySeat: your index online / vs computer, -1 on one phone */
 export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level, net, onFinish }) {
-  const { TurnBar, LastLine, Warn, useWarn, GC, TC, FRAME, fmt } = kit;
+  const { TurnBar, LastLine, Warn, useWarn, GC, fmt } = kit;
   const L = LT[lang] || LT.en;
-  const COLS = [GC, TC, "#ff7a8a", "#8ab4ff"];
   const [wn, warn, shake] = useWarn();
   const n = seats.length;
   const local = role === "local";
   const cpu = role === "cpu";
   const online = role === "host" || role === "guest";
   const amHost = role === "host";
-  const cor = CORNERS[n] || CORNERS[2];
+
+  // colour: vs computer and on one phone you choose it; online it follows the seat order (everyone must agree)
+  const [base, setBase] = useState(local || cpu ? null : 3);
+  const ready = base !== null;
+  const me = cpu ? Math.max(0, mySeat) : 0;
+  const cor = Array.from({ length: n }, (_, s) => cornerOf(s, ready ? base : 3, me, n));
+  const COLS = cor.map((c) => CC[c]);
+
   const G = useRef({ tok: Array.from({ length: n }, () => [-1, -1, -1, -1]), turn: 0, phase: "roll", dice: 0, movable: [], over: false, msg: "", last: null, rollN: 0, hop: null, hn: 0, fx: [], fid: 0 });
   const [, bump] = useState(0);
   const re = () => bump((x) => x + 1);
@@ -261,7 +580,7 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
     if (g.phase !== "roll" || g.over) return;
     g.phase = "rolling"; g.dice = d; g.msg = ""; g.rollN += 1; re();
     if (online && !fromNet) net.send({ t: "ld", d });
-    await nap(900);
+    await nap(1000);
     const who = g.turn;
     const mv = movablesOf(g.tok[who], d);
     g.movable = mv;
@@ -340,7 +659,7 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
   const rolling = g.phase === "rolling";
 
   // a computer seat plays by itself (in a game with friends only the host drives it)
-  const driving = !g.over && iDrive(g.turn);
+  const driving = ready && !g.over && iDrive(g.turn);
   useEffect(() => {
     if (!driving) return undefined;
     let t = 0;
@@ -357,18 +676,19 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
     return () => clearTimeout(t);
   }, [g.turn, g.phase, driving]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const canRoll = !g.over && g.phase === "roll" && mine(g.turn);
-  const canPick = g.phase === "move" && mine(g.turn);
+  const canRoll = ready && !g.over && g.phase === "roll" && mine(g.turn);
+  const canPick = ready && g.phase === "move" && mine(g.turn);
 
   const tapDice = () => {
     if (g.over) return;
+    if (!ready) { warn(L.pickColorFirst); return; }
     if (g.phase === "roll") {
       if (!mine(g.turn)) { warn(fmt(L.waitRoll, { name: nameOf(g.turn) })); return; }
       doRoll(1 + Math.floor(Math.random() * 6), false);
     } else if (g.phase === "move") warn(canPick ? L.pickToken : fmt(L.waitMove, { name: nameOf(g.turn) }));
   };
   const tapToken = (s, i) => {
-    if (g.over) return;
+    if (g.over || !ready) return;
     if (g.phase === "roll") { warn(mine(g.turn) ? L.rollFirst : fmt(L.waitRoll, { name: nameOf(g.turn) })); return; }
     if (g.phase !== "move") return;
     if (!mine(g.turn)) { warn(fmt(L.waitMove, { name: nameOf(g.turn) })); return; }
@@ -383,14 +703,15 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
   };
 
   /* ----- drawing ----- */
-  const k = online && mySeat >= 0 ? cor[mySeat] : 0; // your own corner is turned to the top-left
-  const PADF = 12;
+  const viewSeat = online ? Math.max(0, mySeat) : cpu ? me : 0;
+  const k = (cor[viewSeat] + 1) % 4; // turns the board so YOUR corner is at the bottom-left
+  const PADF = 8;
   const size = Math.floor(Math.min(boxW, 440));
   const bd = size - PADF * 2;
   const cell = bd / 15;
   const seatAt = {};
   cor.forEach((c, s) => { seatAt[c] = s; });
-  const yard = (c) => (seatAt[c] !== undefined ? `url(#ly${seatAt[c]})` : "url(#lgray)");
+  const cellPct = 100 / 15;
 
   const list = [];
   g.tok.forEach((arr, s) => arr.forEach((p, i) => list.push({ s, i, p, pos: posOf(cor[s], p, i) })));
@@ -398,17 +719,19 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
   list.forEach((t) => { t.key = `${t.pos[0].toFixed(2)}-${t.pos[1].toFixed(2)}`; (groups[t.key] = groups[t.key] || []).push(t); });
   list.forEach((t) => {
     const grp = groups[t.key];
-    const off = grp.length > 1 ? (grp.indexOf(t) - (grp.length - 1) / 2) * 0.26 : 0;
+    const off = grp.length > 1 ? (grp.indexOf(t) - (grp.length - 1) / 2) * 0.28 : 0;
     const [rr, cc] = rot(t.pos[0], t.pos[1], k);
-    t.row = rr; t.col = cc + off; t.shrink = grp.length > 1 ? 0.84 : 1;
+    t.row = rr; t.col = cc + off; t.shrink = grp.length > 1 ? 0.82 : 1;
   });
+  list.sort((a, b) => a.row - b.row);
 
   const players = seats.map((s, i) => ({
     name: s.name, color: COLS[i], score: g.tok[i].filter((p) => p === 56).length, you: i === mySeat && !local, sub: s.bot ? "🤖" : undefined,
   }));
   const turnColor = g.over ? GC : COLS[g.turn];
   const shown = g.dice || 1;
-  const status = g.over ? ""
+  const status = !ready ? L.pickColorFirst
+    : g.over ? ""
     : g.phase === "roll" ? (canRoll ? L.roll : fmt(S.racing, { name: nameOf(g.turn) }))
     : g.phase === "rolling" ? L.rolling
     : g.phase === "move" ? (canPick ? L.pickToken : fmt(S.racing, { name: nameOf(g.turn) }))
@@ -417,16 +740,15 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
     ? [fmt(L.rolled, { d: g.last.d }), g.msg === "nomove" ? L.nomove : "", g.last.out ? L.out : "", g.last.cap ? L.captured : "", g.last.home ? L.home : ""].filter(Boolean).join(" · ")
     : "";
   const startCorner = { 0: 0, 13: 1, 26: 2, 39: 3 };
-  // where each movable token would land: tappable markers
+  // where each movable token would land: tappable markers (tap the token or its marker)
   const ghosts = canPick
     ? g.movable.map((i) => {
         const from = g.tok[g.turn][i];
         const to = from === -1 ? 0 : from + g.dice;
         const [rr, cc] = rot(...posOf(cor[g.turn], to, i), k);
-        return { i, row: rr, col: cc };
+        return { i, row: rr, col: cc, home: to === 56 };
       })
     : [];
-  const cellPct = 100 / 15;
 
   return (
     <div className="flex w-full flex-col items-center">
@@ -439,98 +761,440 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
 
       <motion.div animate={shake} className="w-full">
         <div ref={boxRef} className="w-full">
-          <div className="relative mx-auto" style={{ width: size, perspective: 1300, marginTop: Math.round(cell * 0.4) }}>
-            <div style={{ position: "absolute", left: "5%", right: "5%", bottom: -20, height: 40, borderRadius: "50%", background: "radial-gradient(ellipse at center, rgba(0,0,0,.6), transparent 70%)", filter: "blur(8px)", pointerEvents: "none" }} />
-            <motion.div
-              initial={{ rotateX: 46, opacity: 0, y: 30 }} animate={{ rotateX: TILT, opacity: 1, y: 0 }}
-              transition={{ type: "spring", stiffness: 70, damping: 15 }}
+          <div className="relative mx-auto" style={{ width: size, height: size, marginTop: 6 }}>
+            <div
               style={{
-                ...FRAME, position: "relative", boxSizing: "border-box", width: size, padding: PADF, borderRadius: 22, transformOrigin: "50% 62%", transformStyle: "preserve-3d",
-                background: "linear-gradient(145deg,#6a4b2c 0%,#33230f 48%,#563c22 100%)",
-                boxShadow: `0 0 0 2px ${turnColor}, 0 0 38px ${turnColor}55, 0 2px 0 #3d2a14, 0 4px 0 #33230f, 0 6px 0 #2a1c0b, 0 8px 0 #211608, 0 10px 0 #181005, 0 26px 44px rgba(0,0,0,.6)`,
-                transition: "box-shadow .45s",
-              }}
+  position: "absolute",
+  inset: 0,
+  boxSizing: "border-box",
+  padding: PADF,
+  borderRadius: 20,
+
+  background: `
+    linear-gradient(
+      145deg,
+      #243f72 0%,
+      #101b35 42%,
+      #07101f 100%
+    )
+  `,
+
+  border: "1px solid rgba(255,255,255,.16)",
+
+  boxShadow: `
+    0 0 0 1px rgba(255,255,255,.08),
+    0 0 0 2px ${turnColor}66,
+    0 0 32px ${turnColor}44,
+    0 16px 38px rgba(0,0,0,.58),
+    inset 0 1px 0 rgba(255,255,255,.18)
+  `,
+
+  transition: "box-shadow .45s ease",
+}}
             >
-              <div style={{ position: "absolute", inset: PADF - 5, borderRadius: 12, boxShadow: "0 0 0 1px rgba(240,203,98,.6)", pointerEvents: "none" }} />
-              <div style={{ position: "relative", width: bd, height: bd, transformStyle: "preserve-3d" }}>
+              <div style={{
+  position: "relative",
+  width: bd,
+  height: bd,
+  borderRadius: 10,
+  overflow: "hidden",
+  background:
+    "linear-gradient(145deg,#ffffff,#e9ecf1)",
+  boxShadow: `
+    inset 0 0 0 1px rgba(255,255,255,.9),
+    inset 0 0 18px rgba(0,0,0,.08),
+    0 2px 8px rgba(0,0,0,.28)
+  `,
+}}>
                 {/* the flat board */}
-                <div style={{ position: "absolute", inset: 0, borderRadius: 8, overflow: "hidden", boxShadow: "inset 0 0 16px rgba(0,0,0,.6)" }}>
-                  <svg viewBox="0 0 15 15" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
-                    <defs>
-                      <linearGradient id="lcell" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fffaea" /><stop offset="1" stopColor="#dfcf9f" /></linearGradient>
-                      <linearGradient id="lgray" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#4d4434" /><stop offset="1" stopColor="#2a2419" /></linearGradient>
-                      <radialGradient id="lwell" cx=".5" cy=".5" r=".5"><stop offset="0" stopColor="#070503" /><stop offset=".72" stopColor="#1a130a" /><stop offset="1" stopColor="#40321d" /></radialGradient>
-                      <radialGradient id="lgem" cx=".4" cy=".35" r=".7"><stop offset="0" stopColor="#fff" /><stop offset=".5" stopColor="#ffe28a" /><stop offset="1" stopColor="#b8862b" /></radialGradient>
-                      {COLS.map((c, s) => (
-                        <linearGradient key={s} id={`ly${s}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={mix(c, 0.3)} /><stop offset="1" stopColor={mix(c, -0.3)} /></linearGradient>
-                      ))}
-                    </defs>
-                    <rect width="15" height="15" fill="#17110a" />
-                    <g transform={k ? `rotate(${-90 * k} 7.5 7.5)` : undefined}>
-                      {[0, 1, 2, 3].map((c) => (
-                        <g key={`q${c}`}>
-                          <rect x={CORNER_XY[c][0] + 0.04} y={CORNER_XY[c][1] + 0.04} width="5.92" height="5.92" rx=".6" fill={yard(c)} stroke="rgba(0,0,0,.45)" strokeWidth=".05" />
-                          <rect x={CORNER_XY[c][0] + 0.75} y={CORNER_XY[c][1] + 0.75} width="4.5" height="4.5" rx=".7" fill="#120d07" fillOpacity=".62" stroke="rgba(255,255,255,.18)" strokeWidth=".04" />
-                          {BASEP[c].map(([r, cc], i) => (
-                            <g key={i}>
-                              <circle cx={cc + 0.5} cy={r + 0.5} r=".62" fill="url(#lwell)" stroke={seatAt[c] !== undefined ? mix(COLS[seatAt[c]], 0.1) : "#5a4d38"} strokeWidth=".07" />
-                            </g>
-                          ))}
-                        </g>
-                      ))}
-                      {RING.map(([r, c], i) => {
-                        const sc = startCorner[i];
-                        const own = sc !== undefined && seatAt[sc] !== undefined;
-                        return (
-                          <g key={i}>
-                            <rect x={c + 0.05} y={r + 0.05} width=".9" height=".9" rx=".16" fill={own ? `url(#ly${seatAt[sc]})` : "url(#lcell)"} stroke="rgba(70,45,10,.4)" strokeWidth=".03" />
-                            {SAFE.has(i) && <text x={c + 0.5} y={r + 0.76} textAnchor="middle" fontSize=".7" fill={own ? "#fff6d0" : "#b8862b"}>★</text>}
-                          </g>
-                        );
-                      })}
-                      {[0, 1, 2, 3].map((c) => seatAt[c] !== undefined && LANE[c].map(([r, cc], i) => (
-                        <rect key={`l${c}${i}`} x={cc + 0.05} y={r + 0.05} width=".9" height=".9" rx=".16" fill={`url(#ly${seatAt[c]})`} stroke="rgba(0,0,0,.35)" strokeWidth=".03" />
-                      )))}
-                      {[0, 1, 2, 3].map((c) => <polygon key={`t${c}`} points={TRI[c]} fill={yard(c)} stroke="rgba(0,0,0,.4)" strokeWidth=".05" strokeLinejoin="round" />)}
-                      <circle cx="7.5" cy="7.5" r=".46" fill="url(#lgem)" stroke="#8a6a14" strokeWidth=".05" />
-                      {!g.over && (
-                        <motion.rect
-                          key={`act${g.turn}`}
-                          x={CORNER_XY[cor[g.turn]][0] + 0.04} y={CORNER_XY[cor[g.turn]][1] + 0.04} width="5.92" height="5.92" rx=".6"
-                          fill={COLS[g.turn]} stroke={COLS[g.turn]} strokeWidth=".14"
-                          initial={{ fillOpacity: 0.05, strokeOpacity: 0.4 }}
-                          animate={{ fillOpacity: [0.05, 0.28, 0.05], strokeOpacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.6, ease: "easeInOut" }}
-                          style={{ pointerEvents: "none" }}
-                        />
-                      )}
-                    </g>
-                  </svg>
+                <svg
+  viewBox="0 0 15 15"
+  style={{
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+  }}
+>
+  <defs>
+
+    {/* premium board background */}
+    <linearGradient id="boardWhite" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stopColor="#ffffff" />
+      <stop offset="55%" stopColor="#f7f8fa" />
+      <stop offset="100%" stopColor="#e7e9ed" />
+    </linearGradient>
+
+    {/* colored yard gradients */}
+    {[0, 1, 2, 3].map((c) => (
+      <linearGradient
+        key={`yardGrad${c}`}
+        id={`yardGrad${c}`}
+        x1="0"
+        y1="0"
+        x2="1"
+        y2="1"
+      >
+        <stop offset="0%" stopColor={mix(CC[c], 0.22)} />
+        <stop offset="45%" stopColor={CC[c]} />
+        <stop offset="100%" stopColor={mix(CC[c], -0.22)} />
+      </linearGradient>
+    ))}
+
+    {/* lane gradients */}
+    {[0, 1, 2, 3].map((c) => (
+      <linearGradient
+        key={`laneGrad${c}`}
+        id={`laneGrad${c}`}
+        x1="0"
+        y1="0"
+        x2="1"
+        y2="1"
+      >
+        <stop offset="0%" stopColor={mix(CC[c], 0.18)} />
+        <stop offset="100%" stopColor={mix(CC[c], -0.15)} />
+      </linearGradient>
+    ))}
+
+    {/* tile shadow */}
+    <filter
+      id="tileShadow"
+      x="-30%"
+      y="-30%"
+      width="160%"
+      height="160%"
+    >
+      <feDropShadow
+        dx="0"
+        dy=".045"
+        stdDeviation=".055"
+        floodColor="#000000"
+        floodOpacity=".22"
+      />
+    </filter>
+
+    {/* yard shadow */}
+    <filter
+      id="yardShadow"
+      x="-20%"
+      y="-20%"
+      width="140%"
+      height="140%"
+    >
+      <feDropShadow
+        dx="0"
+        dy=".08"
+        stdDeviation=".08"
+        floodColor="#000000"
+        floodOpacity=".28"
+      />
+    </filter>
+
+    {/* subtle inner shine */}
+    <linearGradient id="glassShine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stopColor="#ffffff" stopOpacity=".42" />
+      <stop offset="35%" stopColor="#ffffff" stopOpacity=".08" />
+      <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+    </linearGradient>
+
+  </defs>
+
+  <rect
+    width="15"
+    height="15"
+    rx=".35"
+    fill="url(#boardWhite)"
+  />
+
+  <g transform={k ? `rotate(${-90 * k} 7.5 7.5)` : undefined}>
+
+    {/* =========================
+        FOUR PREMIUM YARDS
+       ========================= */}
+
+    {[0, 1, 2, 3].map((c) => (
+      <g key={`q${c}`}>
+
+        {/* main colored area */}
+        <rect
+          x={CORNER_XY[c][0]}
+          y={CORNER_XY[c][1]}
+          width="6"
+          height="6"
+          fill={`url(#yardGrad${c})`}
+        />
+
+        {/* inner white home panel */}
+        <rect
+          x={CORNER_XY[c][0] + 0.72}
+          y={CORNER_XY[c][1] + 0.72}
+          width="4.56"
+          height="4.56"
+          rx=".5"
+          fill="rgba(255,255,255,.96)"
+          stroke="rgba(255,255,255,.9)"
+          strokeWidth=".06"
+          filter="url(#yardShadow)"
+        />
+
+        {/* glass highlight */}
+        <rect
+          x={CORNER_XY[c][0] + 0.82}
+          y={CORNER_XY[c][1] + 0.82}
+          width="4.36"
+          height="1.2"
+          rx=".3"
+          fill="url(#glassShine)"
+          pointerEvents="none"
+        />
+
+        {/* token bases */}
+        {BASEP[c].map(([r, cc], i) => (
+          <g key={i}>
+            {/* outer ring */}
+            <circle
+              cx={cc + 0.5}
+              cy={r + 0.5}
+              r=".72"
+              fill={mix(CC[c], -0.12)}
+              opacity=".95"
+            />
+
+            {/* inner glossy base */}
+            <circle
+              cx={cc + 0.5}
+              cy={r + 0.5}
+              r=".62"
+              fill={`url(#yardGrad${c})`}
+              stroke="#ffffff"
+              strokeOpacity=".55"
+              strokeWidth=".055"
+            />
+
+            {/* base shine */}
+            <ellipse
+              cx={cc + 0.32}
+              cy={r + 0.27}
+              rx=".23"
+              ry=".12"
+              fill="#ffffff"
+              opacity=".32"
+              transform={`rotate(-25 ${cc + 0.32} ${r + 0.27})`}
+            />
+          </g>
+        ))}
+      </g>
+    ))}
+
+    {/* =========================
+        OUTER RING
+       ========================= */}
+
+    {RING.map(([r, c], i) => {
+      const sc = startCorner[i];
+      const bg = sc !== undefined ? CC[sc] : "#ffffff";
+
+      return (
+        <g key={i}>
+
+          <rect
+            x={c}
+            y={r}
+            width="1"
+            height="1"
+            fill={
+              sc !== undefined
+                ? `url(#yardGrad${sc})`
+                : "url(#boardWhite)"
+            }
+            stroke="rgba(30,35,45,.28)"
+            strokeWidth=".035"
+            filter="url(#tileShadow)"
+          />
+
+          {/* subtle tile highlight */}
+          <path
+            d={`M ${c + .06} ${r + .08} H ${c + .94}`}
+            stroke="#ffffff"
+            strokeOpacity=".48"
+            strokeWidth=".035"
+          />
+
+          {SAFE.has(i) && (
+            <text
+              x={c + 0.5}
+              y={r + 0.74}
+              textAnchor="middle"
+              fontSize=".72"
+              fontWeight="700"
+              fill={sc !== undefined ? "#fff" : "#8b929c"}
+              opacity=".95"
+              transform={
+                k
+                  ? `rotate(${90 * k} ${c + 0.5} ${r + 0.5})`
+                  : undefined
+              }
+            >
+              ★
+            </text>
+          )}
+        </g>
+      );
+    })}
+
+    {/* =========================
+        HOME LANES
+       ========================= */}
+
+    {[0, 1, 2, 3].map((c) =>
+      LANE[c].map(([r, cc], i) => (
+        <g key={`l${c}${i}`}>
+          <rect
+            x={cc}
+            y={r}
+            width="1"
+            height="1"
+            fill={`url(#laneGrad${c})`}
+            stroke="rgba(30,35,45,.28)"
+            strokeWidth=".035"
+            filter="url(#tileShadow)"
+          />
+
+          <path
+            d={`M ${cc + .08} ${r + .08} H ${cc + .92}`}
+            stroke="#ffffff"
+            strokeOpacity=".38"
+            strokeWidth=".035"
+          />
+        </g>
+      ))
+    )}
+
+    {/* =========================
+        DIRECTION ARROWS
+       ========================= */}
+
+    {ARROWS.map(([r, c, ch], i) => (
+      <text
+        key={`a${i}`}
+        x={c + 0.5}
+        y={r + 0.74}
+        textAnchor="middle"
+        fontSize=".7"
+        fontWeight="800"
+        fill={CC[i]}
+        opacity=".95"
+        transform={
+          k
+            ? `rotate(${90 * k} ${c + 0.5} ${r + 0.5})`
+            : undefined
+        }
+      >
+        {ch}
+      </text>
+    ))}
+
+    {/* =========================
+        PREMIUM CENTER
+       ========================= */}
+
+    {[0, 1, 2, 3].map((c) => (
+      <polygon
+        key={`t${c}`}
+        points={TRI[c]}
+        fill={`url(#laneGrad${c})`}
+        stroke="rgba(255,255,255,.7)"
+        strokeWidth=".055"
+        strokeLinejoin="round"
+        filter="url(#tileShadow)"
+      />
+    ))}
+
+    {/* center highlight */}
+    <circle
+      cx="7.5"
+      cy="7.5"
+      r=".13"
+      fill="#ffffff"
+      opacity=".7"
+    />
+
+    {/* =========================
+        ACTIVE PLAYER GLOW
+       ========================= */}
+
+    {ready && !g.over && (
+      <motion.rect
+        key={`act${g.turn}`}
+        x={CORNER_XY[cor[g.turn]][0] + 0.9}
+        y={CORNER_XY[cor[g.turn]][1] + 0.9}
+        width="4.2"
+        height="4.2"
+        rx=".5"
+        fill="#fff"
+        stroke={COLS[g.turn]}
+        strokeWidth=".12"
+        initial={{
+          fillOpacity: 0,
+          strokeOpacity: 0.25,
+        }}
+        animate={{
+          fillOpacity: [0, 0.16, 0],
+          strokeOpacity: [0.3, 1, 0.3],
+        }}
+        transition={{
+          repeat: Infinity,
+          duration: 1.5,
+          ease: "easeInOut",
+        }}
+        style={{
+          pointerEvents: "none",
+        }}
+      />
+    )}
+
+  </g>
+</svg>
+
+                {/* where the glowing tokens can land: tap the marker or the token */}
+                <div style={{ position: "absolute", inset: 0 }}>
+                  {ghosts.map((m) => (
+                    <div
+                      key={m.i} onClick={() => tapToken(g.turn, m.i)}
+                      style={{ position: "absolute", left: `${m.col * cellPct}%`, top: `${m.row * cellPct}%`, width: `${cellPct}%`, height: `${cellPct}%`, cursor: "pointer", zIndex: 4 }}
+                    >
+                      <motion.div
+                        animate={{ scale: [0.8, 1.1, 0.8], opacity: [0.7, 1, 0.7] }} transition={{ repeat: Infinity, duration: 1.1, ease: "easeInOut" }}
+                        style={{ position: "absolute", inset: "10%", borderRadius: "50%", background: `${COLS[g.turn]}66`, boxShadow: `inset 0 0 0 3px ${COLS[g.turn]}, 0 0 12px ${COLS[g.turn]}, 0 0 0 1.5px #fff` }}
+                      />
+                    </div>
+                  ))}
                 </div>
 
-                {/* the pawns stand upright on the board */}
-                <div style={{ position: "absolute", inset: 0, transformStyle: "preserve-3d", transform: "translateZ(1px)" }}>
+                {/* the tokens */}
+                <div style={{ position: "absolute", inset: 0 }}>
                   {list.map((t) => {
                     const pick = canPick && t.s === g.turn && g.movable.includes(t.i);
                     const c = COLS[t.s];
                     const fin = t.p === 56;
                     const hop = g.hop && g.hop.s === t.s && g.hop.i === t.i ? g.hop.n : 0;
-                    const sc = (fin ? 0.62 : 1) * t.shrink;
+                    const sc = (fin ? 0.7 : 1) * t.shrink;
                     return (
                       <motion.div
                         key={`${t.s}-${t.i}`} initial={false}
                         animate={{ x: `${t.col * 100}%`, y: `${t.row * 100}%` }}
-                        transition={{ x: { type: "spring", stiffness: 330, damping: 28 }, y: { type: "spring", stiffness: 330, damping: 28 } }}
+                        transition={{ x: { type: "spring", stiffness: 340, damping: 30 }, y: { type: "spring", stiffness: 340, damping: 30 } }}
                         onClick={() => tapToken(t.s, t.i)}
-                        style={{ position: "absolute", left: 0, top: 0, width: `${cellPct}%`, height: `${cellPct}%`, transformStyle: "preserve-3d", cursor: pick ? "pointer" : "default" }}
+                        style={{ position: "absolute", left: 0, top: 0, width: `${cellPct}%`, height: `${cellPct}%`, cursor: pick ? "pointer" : "default", zIndex: pick ? 6 : hop ? 7 : 3 }}
                       >
-                        <div style={{ position: "absolute", left: "16%", right: "16%", bottom: "6%", height: "28%", borderRadius: "50%", background: "radial-gradient(ellipse, rgba(0,0,0,.65), transparent 72%)", pointerEvents: "none", transform: `scale(${sc})` }} />
-                        <div style={{ position: "absolute", left: "6%", width: "88%", height: "132%", bottom: "9%", transformOrigin: "50% 100%", transform: `rotateX(${-TILT}deg) scale(${sc})`, pointerEvents: "none" }}>
+                        <div style={{ position: "absolute", left: "14%", right: "14%", bottom: "6%", height: "22%", borderRadius: "50%", background: "radial-gradient(ellipse, rgba(0,0,0,.5), transparent 72%)", transform: `scale(${sc})`, pointerEvents: "none" }} />
+                        <div style={{ position: "absolute", left: "8%", width: "84%", height: "118%", bottom: "12%", transformOrigin: "50% 100%", transform: `scale(${sc})` }}>
                           <motion.div
-                            animate={pick ? { y: [0, -cell * 0.18, 0] } : hop ? { y: [0, -cell * 0.6 - (hop % 2) * 0.02, 0] } : { y: 0 }}
-                            transition={pick ? { repeat: Infinity, duration: 0.9, ease: "easeInOut" } : hop ? { duration: 0.2, ease: "easeOut" } : { duration: 0.2 }}
-                            style={{ width: "100%", height: "100%", transformOrigin: "50% 100%", filter: pick ? `drop-shadow(0 0 9px ${c}) drop-shadow(0 0 3px #fff)` : "drop-shadow(0 2px 2px rgba(0,0,0,.5))" }}
+                            animate={pick ? { y: [0, -cell * 0.16, 0] } : hop ? { y: [0, -cell * 0.5 - (hop % 2) * 0.02, 0] } : { y: 0 }}
+                            transition={pick ? { repeat: Infinity, duration: 0.85, ease: "easeInOut" } : hop ? { duration: 0.2, ease: "easeOut" } : { duration: 0.2 }}
+                            style={{ width: "100%", height: "100%", transformOrigin: "50% 100%", filter: pick ? `drop-shadow(0 0 7px ${c}) drop-shadow(0 0 2px #fff)` : "drop-shadow(0 1px 1.5px rgba(0,0,0,.5))" }}
                           >
-                            <Pawn s={t.s} color={c} />
+                            <Pin s={t.s} color={c} />
                           </motion.div>
                         </div>
                       </motion.div>
@@ -539,7 +1203,7 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
                 </div>
 
                 {/* captures and arrivals */}
-                <div style={{ position: "absolute", inset: 0, transformStyle: "preserve-3d", transform: "translateZ(2px)", pointerEvents: "none" }}>
+                <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 8 }}>
                   {g.fx.map((f) => {
                     const [rr, cc] = rot(f.pos[0], f.pos[1], k);
                     return (
@@ -561,31 +1225,197 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
                     );
                   })}
                 </div>
-
-                {/* where the glowing tokens can land: tap a marker or the token */}
-                <div style={{ position: "absolute", inset: 0, transformStyle: "preserve-3d", transform: "translateZ(3px)" }}>
-                  {ghosts.map((m) => (
-                    <div
-                      key={m.i} onClick={() => tapToken(g.turn, m.i)}
-                      style={{ position: "absolute", left: `${m.col * cellPct}%`, top: `${m.row * cellPct}%`, width: `${cellPct}%`, height: `${cellPct}%`, cursor: "pointer" }}
-                    >
-                      <motion.div
-                        animate={{ scale: [0.82, 1.08, 0.82], opacity: [0.65, 1, 0.65] }} transition={{ repeat: Infinity, duration: 1.1, ease: "easeInOut" }}
-                        style={{ position: "absolute", inset: "14%", borderRadius: "50%", background: `radial-gradient(circle, ${COLS[g.turn]}55, transparent 70%)`, boxShadow: `inset 0 0 0 2.5px ${COLS[g.turn]}, 0 0 14px ${COLS[g.turn]}` }}
-                      />
-                    </div>
-                  ))}
-                </div>
               </div>
-            </motion.div>
+            </div>
+
+            {/* choose your colour */}
+            <AnimatePresence>
+              {!ready && (
+                <motion.div
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="absolute inset-0 z-30 grid place-items-center" style={{ background: "rgba(8,14,34,.82)", borderRadius: 14 }}
+                >
+                  <motion.div
+                    initial={{ scale: 0.88, y: 12 }} animate={{ scale: 1, y: 0 }} transition={{ type: "spring", stiffness: 220, damping: 18 }}
+                    className="rounded-2xl p-4 text-center" style={kit.PANEL}
+                  >
+                    <p className="text-[15px] font-bold">{L.chooseColor}</p>
+                    <p className="mt-0.5 text-[11px] opacity-75">{L.chooseSub}</p>
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      {[3, 0, 1, 2].map((c) => (
+                        <motion.button
+                          key={c} type="button" onClick={() => setBase(c)} whileHover={{ y: -3, scale: 1.04 }} whileTap={{ scale: 0.94 }}
+                          className="flex items-center gap-2 rounded-xl px-3 py-2"
+                          style={{ background: "rgba(255,255,255,.08)", boxShadow: `inset 0 0 0 2px ${CC[c]}` }}
+                        >
+                          <span style={{ width: 28, height: 36, display: "block" }}><Pin s={c} color={CC[c]} /></span>
+                          <span className="text-[13px] font-semibold">{L.names[c]}</span>
+                        </motion.button>
+                      ))}
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </motion.div>
 
-      <div className="mt-7 flex items-center gap-5">
-        <Die3D v={shown} n={g.rollN} rolling={rolling} color={turnColor} disabled={!canRoll} onClick={tapDice} />
-        <p className="max-w-[210px] text-[13px] font-semibold leading-snug" style={{ color: turnColor }}>{status}</p>
-      </div>
+     
+{/* PREMIUM PLAYER + DICE CONTROL PANEL */}
+<div
+  className="mt-7 w-full max-w-[440px] rounded-[24px] p-[1px]"
+  style={{
+    background: `linear-gradient(135deg,${turnColor},#f4d477,#ffffff22,${turnColor})`,
+    boxShadow: `0 12px 35px rgba(0,0,0,.38), 0 0 22px ${turnColor}22`,
+  }}
+>
+  <div
+    className="relative flex items-center justify-between gap-2 overflow-hidden rounded-[23px] px-3 py-4"
+    style={{
+      background: "linear-gradient(145deg,#183b72 0%,#102953 48%,#091a37 100%)",
+    }}
+  >
+    {/* Background shine */}
+    <div
+      className="pointer-events-none absolute inset-0"
+      style={{
+        background: "linear-gradient(115deg,rgba(255,255,255,.09),transparent 40%,rgba(255,255,255,.025))",
+      }}
+    />
+
+    {/* PLAYER INFORMATION */}
+    <div className="relative flex min-w-0 flex-1 items-center gap-2">
+      {ready && (
+        <>
+          <div
+            className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl"
+            style={{
+              background: "linear-gradient(145deg,#ffffff20,#ffffff08)",
+              border: `1px solid ${turnColor}99`,
+              boxShadow: `0 0 15px ${turnColor}33`,
+            }}
+          >
+            <div className="h-8 w-6">
+              <Pin
+                s={g.over ? 0 : g.turn}
+                color={g.over ? COLS[0] : COLS[g.turn]}
+              />
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <p
+                className="truncate text-[13px] font-black text-white"
+              >
+                {g.over ? "GAME OVER" : nameOf(g.turn)}
+              </p>
+
+              {!local && mine(g.turn) && (
+                <span
+                  className="shrink-0 rounded-md px-1.5 py-0.5 text-[8px] font-black tracking-wider"
+                  style={{
+                    background: "#f5cf70",
+                    color: "#182744",
+                  }}
+                >
+                  YOU
+                </span>
+              )}
+            </div>
+
+            <div
+              className="mt-1 flex items-center gap-1.5 text-[9px] font-bold tracking-[1.2px]"
+              style={{ color: "#f4d477" }}
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{
+                  background: turnColor,
+                  boxShadow: `0 0 8px ${turnColor}`,
+                }}
+              />
+              {local
+                ? "PLAYER TURN"
+                : mine(g.turn)
+                  ? "YOUR TURN"
+                  : "OPPONENT TURN"}
+            </div>
+
+            <p className="mt-1 truncate text-[10px] text-blue-100/65">
+              {g.over ? "Congratulations!" : rolling ? "Dice is rolling..." : status}
+            </p>
+          </div>
+        </>
+      )}
     </div>
+
+    {/* CENTER DICE */}
+    <div
+      className="relative flex shrink-0 flex-col items-center justify-center"
+      style={{ minWidth: 106 }}
+    >
+      <div
+        className="mb-1 text-[9px] font-black tracking-[2px]"
+        style={{ color: "#f5d783" }}
+      >
+        {rolling ? "ROLLING" : "YOUR DICE"}
+      </div>
+
+      <Die
+        v={shown}
+        rolling={rolling}
+        color={turnColor}
+        disabled={!canRoll}
+        onClick={tapDice}
+        size={70}
+      />
+
+      <p
+        className="mt-2 text-[9px] font-semibold"
+        style={{ color: "#ffffff99" }}
+      >
+        {rolling ? "Good luck!" : canRoll ? "TAP TO ROLL" : "LUDO"}
+      </p>
+    </div>
+
+    {/* RIGHT SIDE: DICE RESULT */}
+    <div className="relative flex min-w-0 flex-1 flex-col items-end">
+      <div
+        className="rounded-xl px-3 py-2 text-center"
+        style={{
+          background: "rgba(255,255,255,.07)",
+          border: "1px solid rgba(255,255,255,.12)",
+        }}
+      >
+        <p className="text-[8px] font-bold tracking-widest text-blue-100/70">
+          LAST ROLL
+        </p>
+
+        <p
+          className="mt-1 text-2xl font-black"
+          style={{
+            color: "#ffdf85",
+            textShadow: "0 0 12px rgba(255,205,90,.3)",
+          }}
+        >
+          {g.dice || "—"}
+        </p>
+      </div>
+
+      <p className="mt-2 text-right text-[9px] font-semibold text-blue-100/70">
+        {g.phase === "move"
+          ? "Move your token"
+          : g.phase === "rolling"
+            ? "Rolling..."
+            : g.phase === "pass"
+              ? "No move"
+              : "Ready"}
+      </p>
+    </div>
+  </div>
+</div>
+</div>
   );
 }
