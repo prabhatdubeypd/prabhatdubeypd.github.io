@@ -33,6 +33,14 @@ export const HOW = {
   ],
 };
 
+/* ---------------- board colours (change these if you want another theme) ---------------- */
+const BOARD_LIGHT = "#e6d2a0";
+const BOARD_DARK = "#6a4526";
+const WOOD_LIGHT = "linear-gradient(145deg,#f1e1b6,#d3bb86)";
+const WOOD_DARK = "linear-gradient(145deg,#7b5531,#51361e)";
+const SEL_COLOR = "rgba(255,235,59,.55)";
+const LAST_COLOR = "rgba(255,235,59,.38)";
+
 /* ---------------- the chess rules ---------------- */
 const FILES = "abcdefgh";
 const sq = (r, c) => FILES[c] + (8 - r);
@@ -447,12 +455,12 @@ export function chessMove(st, side, level, hist, opts) {
   return top[0].m;
 }
 
-/* ---------------- the pieces: drawn as shaded, turned-wood style SVG ---------------- */
-const OUTLINE = { gold: "#4a3206", teal: "#052b30" };
+/* ---------------- the pieces: flat 2D cartoon style (like chess.com), gold and black ---------------- */
+const OUTLINE = { gold: "#3d2a05", black: "#000" };
 const FOOT = "M23 92 Q23 83 34 81 H66 Q77 83 77 92 Z";
 const NECK = "M31 81 Q32 75 38 74 H62 Q68 75 69 81 Z";
 const circ = (cx, cy, r) => `M${cx - r} ${cy} A${r} ${r} 0 1 1 ${cx + r} ${cy} A${r} ${r} 0 1 1 ${cx - r} ${cy} Z`;
-function Shape({ d, g, ol, sw = 2.2 }) {
+function Shape({ d, g, ol, sw = 2.4 }) {
   return (
     <>
       <path d={d} fill={`url(#${g})`} stroke={ol} strokeWidth={sw} strokeLinejoin="round" />
@@ -461,8 +469,9 @@ function Shape({ d, g, ol, sw = 2.2 }) {
   );
 }
 function PieceArt({ t, gold }) {
-  const g = gold ? "kgG" : "kgT";
-  const ol = gold ? OUTLINE.gold : OUTLINE.teal;
+  const g = gold ? "kgG" : "kgK";
+  const ol = gold ? OUTLINE.gold : OUTLINE.black;
+  const hl = gold ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.35)";
   const S = (d, sw) => <Shape d={d} g={g} ol={ol} sw={sw} />;
   if (t === "P")
     return (
@@ -471,6 +480,7 @@ function PieceArt({ t, gold }) {
         {S("M40 75 C42 64 45 56 45 49 H55 C55 56 58 64 60 75 Z")}
         {S("M35 49 Q35 43 50 43 Q65 43 65 49 Q65 55 50 55 Q35 55 35 49 Z")}
         {S(circ(50, 31, 12))}
+        <path d="M44 27 Q46 23 51 23" fill="none" stroke={hl} strokeWidth="2.4" strokeLinecap="round" />
       </>
     );
   if (t === "R")
@@ -480,6 +490,7 @@ function PieceArt({ t, gold }) {
         {S("M37 75 L40 46 H60 L63 75 Z")}
         {S("M32 46 H68 V39 H32 Z")}
         {S("M33 39 L34 20 H43 V27 H47 V20 H53 V27 H57 V20 H66 L67 39 Z")}
+        <path d="M40 72 L42 50" fill="none" stroke={hl} strokeWidth="2.4" strokeLinecap="round" />
       </>
     );
   if (t === "N")
@@ -489,7 +500,7 @@ function PieceArt({ t, gold }) {
         {S("M33 75 C31 63 35 53 43 46 C45 44 44 42 42 41 C38 39 33 42 29 46 L26 42 C28 33 37 23 45 21 L46 13 L53 19 C67 20 74 33 73 48 C72 60 67 67 67 75 Z")}
         <circle cx="52" cy="31" r="2.6" fill={ol} />
         <path d="M33 44 C34 50 38 52 41 51" fill="none" stroke={ol} strokeWidth="1.6" strokeLinecap="round" />
-        <path d="M58 22 C64 28 66 38 64 46" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="2.4" strokeLinecap="round" />
+        <path d="M58 22 C64 28 66 38 64 46" fill="none" stroke={hl} strokeWidth="2.6" strokeLinecap="round" />
       </>
     );
   if (t === "B")
@@ -499,7 +510,7 @@ function PieceArt({ t, gold }) {
         {S("M40 75 C42 65 44 58 44 52 H56 C56 58 58 65 60 75 Z")}
         {S("M35 52 Q35 47 50 47 Q65 47 65 52 Q65 57 50 57 Q35 57 35 52 Z")}
         {S("M50 15 C61 25 67 35 62 44 C60 48 57 49 56 49 H44 C43 49 40 48 38 44 C33 35 39 25 50 15 Z")}
-        <path d="M55 25 L46 37" stroke={ol} strokeWidth="2.4" strokeLinecap="round" />
+        <path d="M55 25 L46 37" stroke={ol} strokeWidth="2.6" strokeLinecap="round" />
         {S(circ(50, 13, 4.2), 1.8)}
       </>
     );
@@ -535,13 +546,13 @@ function ChessDefs() {
     <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true" focusable="false">
       <defs>
         <linearGradient id="kgG" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stopColor="#fff4c2" /><stop offset=".32" stopColor="#f3d068" /><stop offset=".68" stopColor="#c9972f" /><stop offset="1" stopColor="#7a5614" />
+          <stop offset="0" stopColor="#fff1b0" /><stop offset=".35" stopColor="#f6cf55" /><stop offset=".7" stopColor="#d9a52e" /><stop offset="1" stopColor="#9a6c14" />
         </linearGradient>
-        <linearGradient id="kgT" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stopColor="#c6fff8" /><stop offset=".32" stopColor="#55d6ca" /><stop offset=".68" stopColor="#1b8f88" /><stop offset="1" stopColor="#0a4a50" />
+        <linearGradient id="kgK" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="#6b6b6b" /><stop offset=".35" stopColor="#424242" /><stop offset=".7" stopColor="#262626" /><stop offset="1" stopColor="#101010" />
         </linearGradient>
         <linearGradient id="kgS" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#fff" stopOpacity=".5" /><stop offset=".45" stopColor="#fff" stopOpacity=".04" /><stop offset="1" stopColor="#000" stopOpacity=".3" />
+          <stop offset="0" stopColor="#fff" stopOpacity=".28" /><stop offset=".5" stopColor="#fff" stopOpacity="0" /><stop offset="1" stopColor="#000" stopOpacity=".22" />
         </linearGradient>
       </defs>
     </svg>
@@ -549,10 +560,8 @@ function ChessDefs() {
 }
 
 /* ---------------- the game ---------------- */
-const TILT = 24;
-const PADF = 22;
 export default function ChessGame({ kit, ui, lang, S, role, names, level, side, net, onFinish }) {
-  const { TurnBar, LastLine, Warn, useWarn, GC, TC, FRAME, fmt } = kit;
+  const { TurnBar, LastLine, Warn, useWarn, GC, TC, fmt } = kit;
   const K = CT[lang] || CT.en;
   const [wn, warn, shake] = useWarn();
   const local = role === "local";
@@ -580,9 +589,8 @@ export default function ChessGame({ kit, ui, lang, S, role, names, level, side, 
   const flipped = local ? auto && turn === 2 : myP === 2;
   const colorOf = (s) => (local ? (s === 1 ? GC : TC) : s === myP ? GC : TC);
   const nameOf = (s) => (s === 1 ? names.host : names.guest);
-  const size = Math.floor(Math.min(boxW, 420));
-  const bd = size - PADF * 2;
-  const cell = bd / 8;
+  const size = Math.floor(Math.min(boxW, 460));
+  const cell = size / 8;
   const X = (c) => (flipped ? 7 - c : c);
   const Y = (r) => (flipped ? 7 - r : r);
 
@@ -674,12 +682,12 @@ export default function ChessGame({ kit, ui, lang, S, role, names, level, side, 
   const lastTxt = last
     ? `${GLY[last.piece]}︎ ${sq(last.m.fr, last.m.fc)} → ${sq(last.m.tr, last.m.tc)}${last.m.cap ? " ✕" : ""}${last.m.castle ? (last.m.castle === "k" ? " · O-O" : " · O-O-O") : ""}${last.pt ? ` · ${GLY[last.pt]}︎` : ""}${last.chk ? " +" : ""}`
     : "";
-  const lab = Math.max(9, Math.round(cell * 0.27));
+  const lab = Math.max(9, Math.round(cell * 0.2));
 
   return (
     <div className="flex w-full flex-col items-center">
       <ChessDefs />
-      <div className="w-full max-w-[420px]">
+      <div className="w-full max-w-[460px]">
         <TurnBar players={players} turn={res ? -1 : order.indexOf(turn)} S={S} local={local} over={!!res} />
         {last ? <LastLine S={S} name={nameOf(last.who)} color={colorOf(last.who)}>{lastTxt}</LastLine> : <div className="min-h-[30px]" />}
         <div className="mb-1 flex min-h-[30px] justify-center">
@@ -700,137 +708,104 @@ export default function ChessGame({ kit, ui, lang, S, role, names, level, side, 
 
       <motion.div animate={shake} className="w-full">
         <div ref={boxRef} className="w-full">
-          <div className="relative mx-auto" style={{ width: size, perspective: 1400, marginTop: Math.round(cell * 0.5) }}>
-            {/* soft shadow on the table under the board */}
-            <div style={{ position: "absolute", left: "5%", right: "5%", bottom: -22, height: 44, borderRadius: "50%", background: "radial-gradient(ellipse at center, rgba(0,0,0,.6), transparent 70%)", filter: "blur(8px)", pointerEvents: "none" }} />
-
-            <motion.div
-              initial={{ rotateX: 52, opacity: 0, y: 30 }} animate={{ rotateX: TILT, opacity: 1, y: 0 }}
-              transition={{ type: "spring", stiffness: 70, damping: 15 }}
+          <div className="relative mx-auto" style={{ width: size, height: size, marginTop: 6 }}>
+            {/* the flat 2D board */}
+            <div
               style={{
-                ...FRAME, position: "relative", boxSizing: "border-box", width: size, padding: PADF, borderRadius: 22, transformOrigin: "50% 62%", transformStyle: "preserve-3d",
-                background: "linear-gradient(145deg,#6a4b2c 0%,#33230f 48%,#563c22 100%)",
-                boxShadow: `0 0 0 2px ${turnColor}, 0 0 38px ${turnColor}55, 0 2px 0 #3d2a14, 0 4px 0 #33230f, 0 6px 0 #2a1c0b, 0 8px 0 #211608, 0 10px 0 #181005, 0 26px 44px rgba(0,0,0,.6)`,
-                transition: "box-shadow .45s",
+                position: "absolute", inset: 0, borderRadius: 8, overflow: "hidden",
+                boxShadow: `0 0 0 2px ${turnColor}, 0 0 26px ${turnColor}55, 0 10px 28px rgba(0,0,0,.5)`,
+                transition: "box-shadow .4s",
               }}
             >
-              {/* gold inlay line around the playing field */}
-              <div style={{ position: "absolute", inset: PADF - 6, borderRadius: 10, boxShadow: "0 0 0 1px rgba(240,203,98,.65), inset 0 0 0 1px rgba(0,0,0,.4)", pointerEvents: "none" }} />
-              {/* a-h and 1-8 */}
-              {Array.from({ length: 8 }).map((_, i) => (
-                <span key={`f${i}`} style={{ position: "absolute", bottom: (PADF - lab) / 2 - 1, left: PADF + i * cell + cell / 2, transform: "translateX(-50%)", fontSize: lab, lineHeight: 1, color: "#d6ad52", opacity: 0.85, fontFamily: "ui-monospace, monospace", pointerEvents: "none" }}>
-                  {FILES[flipped ? 7 - i : i]}
-                </span>
-              ))}
-              {Array.from({ length: 8 }).map((_, i) => (
-                <span key={`n${i}`} style={{ position: "absolute", left: (PADF - lab) / 2, top: PADF + i * cell + cell / 2, transform: "translateY(-50%)", fontSize: lab, lineHeight: 1, color: "#d6ad52", opacity: 0.85, fontFamily: "ui-monospace, monospace", pointerEvents: "none" }}>
-                  {flipped ? i + 1 : 8 - i}
-                </span>
-              ))}
-
-              <div style={{ position: "relative", width: bd, height: bd, transformStyle: "preserve-3d" }}>
-                {/* the squares */}
-                <div style={{ position: "absolute", inset: 0, borderRadius: 6, overflow: "hidden", boxShadow: "inset 0 0 18px rgba(0,0,0,.55)" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", width: "100%", height: "100%" }}>
-                    {Array.from({ length: 64 }).map((_, i) => {
-                      const r = flipped ? 7 - Math.floor(i / 8) : Math.floor(i / 8);
-                      const c = flipped ? 7 - (i % 8) : i % 8;
-                      const key = `${r}-${c}`;
-                      const dark = (r + c) % 2 === 1;
-                      const dest = destMap[key];
-                      const isSel = sel && sel[0] === r && sel[1] === c;
-                      const isLast = last && ((last.m.fr === r && last.m.fc === c) || (last.m.tr === r && last.m.tc === c));
-                      const bad = wn && wn.cell === key;
-                      const kc = kingSq && kingSq[0] === r && kingSq[1] === c;
-                      const tint = bad ? "rgba(229,72,77,.55)" : kc ? "radial-gradient(circle, rgba(255,70,70,.85), rgba(229,72,77,.25) 70%)" : isSel ? "rgba(240,203,98,.55)" : isLast ? `${colorOf(last.who)}40` : null;
-                      return (
-                        <div
-                          key={i} onClick={() => onTap(r, c)}
-                          style={{
-                            position: "relative", cursor: canAct ? "pointer" : "default",
-                            background: dark ? "linear-gradient(145deg,#7b5531,#51361e)" : "linear-gradient(145deg,#f1e1b6,#d3bb86)",
-                            boxShadow: dark ? "inset 0 0 0 .5px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.07)" : "inset 0 0 0 .5px rgba(90,60,20,.25), inset 0 1px 0 rgba(255,255,255,.5)",
-                          }}
-                        >
-                          {tint && <div style={{ position: "absolute", inset: 0, background: tint, transition: "background .3s" }} />}
-                          {dest && (
-                            <motion.span
-                              animate={{ scale: [1, 1.18, 1], opacity: [0.8, 1, 0.8] }} transition={{ repeat: Infinity, duration: 1.3, ease: "easeInOut" }}
-                              style={dest.cap
-                                ? { position: "absolute", inset: "6%", borderRadius: "50%", boxShadow: "inset 0 0 0 3px rgba(229,72,77,.95), 0 0 12px rgba(229,72,77,.7)" }
-                                : { position: "absolute", left: "36%", top: "36%", width: "28%", height: "28%", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #fff8d6, #f0cb62 55%, #b8862b)", boxShadow: "0 0 12px rgba(240,203,98,.95), 0 2px 3px rgba(0,0,0,.4)" }}
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* last move arrow and capture burst (flat on the board) */}
-                {last && (
-                  <svg viewBox="0 0 8 8" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-                    <motion.line
-                      key={`l${last.k}`} x1={X(last.m.fc) + 0.5} y1={Y(last.m.fr) + 0.5} x2={X(last.m.tc) + 0.5} y2={Y(last.m.tr) + 0.5}
-                      stroke={colorOf(last.who)} strokeWidth="0.1" strokeLinecap="round" opacity="0.8"
-                      initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.5, ease: "easeOut" }}
-                    />
-                    <circle cx={X(last.m.fc) + 0.5} cy={Y(last.m.fr) + 0.5} r="0.18" fill="none" stroke={colorOf(last.who)} strokeWidth="0.05" />
-                    {last.m.cap && (
-                      <motion.circle
-                        key={`c${last.k}`} cx={X(last.m.tc) + 0.5} cy={Y(last.m.tr) + 0.5} fill="none" stroke="#ff8a8a" strokeWidth="0.07"
-                        initial={{ r: 0.2, opacity: 0.95 }} animate={{ r: 0.95, opacity: 0 }} transition={{ duration: 0.65, ease: "easeOut" }}
-                      />
-                    )}
-                  </svg>
-                )}
-
-                {/* the pieces stand upright on the tilted board */}
-                <div style={{ position: "absolute", inset: 0, transformStyle: "preserve-3d", transform: "translateZ(1px)" }}>
-                  <AnimatePresence initial={false}>
-                    {pcs.map((pc) => {
-                      const isSel = sel && sel[0] === pc.r && sel[1] === pc.c;
-                      const gold = colorOf(pc.s) === GC;
-                      const moved = last && last.id === pc.id;
-                      const inChk = kingSq && kingSq[0] === pc.r && kingSq[1] === pc.c;
-                      return (
-                        <motion.div
-                          key={pc.id} initial={false}
-                          animate={{ x: `${X(pc.c) * 100}%`, y: `${Y(pc.r) * 100}%`, scale: 1, opacity: 1 }}
-                          exit={{ scale: 0.2, opacity: 0 }}
-                          transition={{ x: { type: "spring", stiffness: 210, damping: 26 }, y: { type: "spring", stiffness: 210, damping: 26 }, opacity: { duration: 0.25 }, scale: { duration: 0.3 } }}
-                          onClick={() => onTap(pc.r, pc.c)}
-                          style={{ position: "absolute", left: 0, top: 0, width: "12.5%", height: "12.5%", transformStyle: "preserve-3d", cursor: canAct ? "pointer" : "default" }}
-                        >
-                          {/* shadow on the board */}
-                          <motion.div
-                            animate={{ scale: isSel ? 0.78 : 1, opacity: isSel ? 0.5 : 0.85 }} transition={{ type: "spring", stiffness: 260, damping: 22 }}
-                            style={{ position: "absolute", left: "14%", right: "14%", bottom: "7%", height: "26%", borderRadius: "50%", background: inChk ? "radial-gradient(ellipse, rgba(255,60,60,.85), transparent 72%)" : "radial-gradient(ellipse, rgba(0,0,0,.6), transparent 72%)", pointerEvents: "none" }}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gridTemplateRows: "repeat(8, 1fr)", width: "100%", height: "100%" }}>
+                {Array.from({ length: 64 }).map((_, i) => {
+                  const vr = Math.floor(i / 8), vc = i % 8; // position on screen
+                  const r = flipped ? 7 - vr : vr;
+                  const c = flipped ? 7 - vc : vc;
+                  const key = `${r}-${c}`;
+                  const dark = (r + c) % 2 === 1;
+                  const dest = destMap[key];
+                  const isSel = sel && sel[0] === r && sel[1] === c;
+                  const isLast = last && ((last.m.fr === r && last.m.fc === c) || (last.m.tr === r && last.m.tc === c));
+                  const bad = wn && wn.cell === key;
+                  const kc = kingSq && kingSq[0] === r && kingSq[1] === c;
+                  const tint = bad ? "rgba(229,72,77,.6)" : kc ? "radial-gradient(circle, rgba(255,60,60,.95) 0%, rgba(229,72,77,.35) 65%, transparent 80%)" : isSel ? SEL_COLOR : isLast ? LAST_COLOR : null;
+                  const txt = dark ? BOARD_LIGHT : BOARD_DARK;
+                  return (
+                    <div
+                      key={i} onClick={() => onTap(r, c)}
+                     style={{ position: "relative", background: dark ? WOOD_DARK : WOOD_LIGHT, boxShadow: dark ? "inset 0 0 0 .5px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.07)" : "inset 0 0 0 .5px rgba(90,60,20,.25), inset 0 1px 0 rgba(255,255,255,.5)", cursor: canAct ? "pointer" : "default", userSelect: "none", WebkitTapHighlightColor: "transparent" }}
+                    >
+                      {tint && <div style={{ position: "absolute", inset: 0, background: tint, pointerEvents: "none" }} />}
+                      {vc === 0 && (
+                        <span style={{ position: "absolute", top: 2, left: 3, fontSize: lab, lineHeight: 1, fontWeight: 700, color: txt, pointerEvents: "none" }}>{8 - r}</span>
+                      )}
+                      {vr === 7 && (
+                        <span style={{ position: "absolute", bottom: 2, right: 3, fontSize: lab, lineHeight: 1, fontWeight: 700, color: txt, pointerEvents: "none" }}>{FILES[c]}</span>
+                      )}
+                      {dest && (
+                        dest.cap ? (
+                          <motion.span
+                            initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                            style={{ position: "absolute", inset: 0, borderRadius: "50%", boxShadow: "inset 0 0 0 4px rgba(240,203,98,.9)", pointerEvents: "none" }}
                           />
-                          {/* the standing figure */}
-                          <div style={{ position: "absolute", left: "-6%", width: "112%", height: "132%", bottom: "9%", transformOrigin: "50% 100%", transform: `rotateX(${-TILT}deg)`, pointerEvents: "none" }}>
-                            <motion.div
-                              animate={{ y: isSel ? -cell * 0.2 : moved ? [0, -cell * 0.32 - last.k * 0.01, 0] : 0, scale: isSel ? 1.1 : 1 }}
-                              transition={moved && !isSel ? { duration: 0.5, ease: "easeInOut" } : { type: "spring", stiffness: 300, damping: 20 }}
-                              style={{ width: "100%", height: "100%", transformOrigin: "50% 100%", filter: isSel ? "drop-shadow(0 0 10px rgba(240,203,98,.95))" : "drop-shadow(0 2px 2px rgba(0,0,0,.45))" }}
-                            >
-                              <PieceSvg t={pc.t} gold={gold} />
-                            </motion.div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                  </AnimatePresence>
-                </div>
+                        ) : (
+                          <motion.span
+                            initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                            style={{ position: "absolute", left: "34%", top: "34%", width: "32%", height: "32%", borderRadius: "50%", background: "rgba(240,203,98,.9)", pointerEvents: "none" }}
+                          />
+                        )
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            </motion.div>
+
+              {/* pieces: they never catch clicks, so every tap goes straight to the square under them */}
+              <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                <AnimatePresence initial={false}>
+                  {pcs.map((pc) => {
+                    const isSel = sel && sel[0] === pc.r && sel[1] === pc.c;
+                    const gold = colorOf(pc.s) === GC;
+                    return (
+                      <motion.div
+                        key={pc.id} initial={false}
+                        animate={{ x: `${X(pc.c) * 100}%`, y: `${Y(pc.r) * 100}%`, opacity: 1 }}
+                        exit={{ scale: 0.3, opacity: 0 }}
+                        transition={{ x: { type: "spring", stiffness: 320, damping: 30 }, y: { type: "spring", stiffness: 320, damping: 30 }, opacity: { duration: 0.2 }, scale: { duration: 0.25 } }}
+                        style={{ position: "absolute", left: 0, top: 0, width: "12.5%", height: "12.5%", pointerEvents: "none", zIndex: isSel ? 3 : 2 }}
+                      >
+                        <motion.div
+                          animate={{ scale: isSel ? 1.12 : 1, y: isSel ? -cell * 0.06 : 0 }}
+                          transition={{ type: "spring", stiffness: 340, damping: 22 }}
+                          style={{ width: "100%", height: "100%", padding: "3%", boxSizing: "border-box", filter: isSel ? "drop-shadow(0 4px 5px rgba(0,0,0,.45))" : "drop-shadow(0 1px 1px rgba(0,0,0,.35))" }}
+                        >
+                          <PieceSvg t={pc.t} gold={gold} />
+                        </motion.div>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+              </div>
+
+              {/* capture burst */}
+              <AnimatePresence>
+                {last && last.m.cap && (
+                  <motion.span
+                    key={`cb${last.k}`}
+                    initial={{ scale: 0.3, opacity: 0.9 }} animate={{ scale: 1.8, opacity: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.55, ease: "easeOut" }}
+                    style={{ position: "absolute", left: X(last.m.tc) * cell, top: Y(last.m.tr) * cell, width: cell, height: cell, borderRadius: "50%", boxShadow: "inset 0 0 0 3px #ff6b6b", pointerEvents: "none", zIndex: 4 }}
+                  />
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* pawn promotion */}
             <AnimatePresence>
               {ask && (
                 <motion.div
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setAsk(null)}
-                  className="absolute inset-0 z-20 grid place-items-center" style={{ background: "rgba(10,8,5,.74)", borderRadius: 22 }}
+                  className="absolute inset-0 z-20 grid place-items-center" style={{ background: "rgba(10,8,5,.72)", borderRadius: 8 }}
                 >
                   <motion.div
                     initial={{ scale: 0.85, y: 14 }} animate={{ scale: 1, y: 0 }} transition={{ type: "spring", stiffness: 220, damping: 18 }}
@@ -842,9 +817,9 @@ export default function ChessGame({ kit, ui, lang, S, role, names, level, side, 
                         <motion.button
                           key={t} type="button" onClick={() => doMove(ask, turn, false, t)} whileHover={{ y: -4, scale: 1.06 }} whileTap={{ scale: 0.93 }}
                           className="grid h-14 w-14 place-items-center rounded-xl"
-                          style={{ background: "rgba(255,255,255,.08)", boxShadow: "inset 0 0 0 1px rgba(240,203,98,.5)" }}
+                          style={{ background: "rgba(255,255,255,.1)", boxShadow: "inset 0 0 0 1px rgba(240,203,98,.5)" }}
                         >
-                          <span style={{ width: 42, height: 42, display: "block" }}><PieceSvg t={t} gold={colorOf(turn) === GC} /></span>
+                          <span style={{ width: 44, height: 44, display: "block" }}><PieceSvg t={t} gold={colorOf(turn) === GC} /></span>
                         </motion.button>
                       ))}
                     </div>
