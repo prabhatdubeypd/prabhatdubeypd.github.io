@@ -169,6 +169,18 @@ const DEFAULTS = {
       hard: { cols: 14, rows: 14, speed: 120, target: 20, wrap: false, rocks: 8 },
     },
   },
+    chess: {
+    enabled: true, sort: 11, multiOnly: true,
+    title: { en: "Chess", hi: "शतरंज" },
+    desc: { en: "The classic game of kings. Play a friend.", hi: "राजाओं का क्लासिक खेल। दोस्त के साथ खेलें।" },
+    levels: { easy: {} },
+  },
+  ludo: {
+    enabled: true, sort: 12, multiOnly: true,
+    title: { en: "Ludo", hi: "लूडो" },
+    desc: { en: "Roll, race your tokens home and capture rivals.", hi: "पासा फेंकें, गोटियाँ घर पहुँचाएँ और दुश्मन को पकड़ें।" },
+    levels: { easy: {} },
+  },
 };
 
 function mergeCfg(rows) {
@@ -1634,6 +1646,19 @@ function GameArt({ kind }) {
       </svg>
     );
 
+      if (kind === "chess")
+    return <div style={{ fontSize: 42, lineHeight: 1, ...goldText }}>{"♞\uFE0E"}</div>;
+  if (kind === "ludo")
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3, width: 44, height: 44 }}>
+        {["#f0cb62", "rgba(255,255,255,.18)", "rgba(255,255,255,.18)", "#4fd1c5"].map((c, i) => (
+          <span key={i} style={{ borderRadius: 7, background: c, display: "grid", placeItems: "center" }}>
+            {(i === 0 || i === 3) && <i style={{ width: 11, height: 11, borderRadius: "50%", background: "rgba(0,0,0,.45)" }} />}
+          </span>
+        ))}
+      </div>
+    );
+
   return <div className="font-serif text-[34px] font-bold leading-none" style={goldText}>21</div>;
 }
 
@@ -1826,7 +1851,7 @@ export default function KingGames() {
 
   if (typeof document === "undefined") return null;
 
-  const games = Object.keys(cfg).filter((k) => cfg[k].enabled).sort((a, b) => cfg[a].sort - cfg[b].sort);
+    const games = Object.keys(cfg).filter((k) => cfg[k].enabled && !cfg[k].multiOnly).sort((a, b) => cfg[a].sort - cfg[b].sort);
   const R = Math.hypot(window.innerWidth, window.innerHeight) + 120;
   const c0 = `circle(0px at ${origin.x}px ${origin.y}px)`;
   const c1 = `circle(${R}px at ${origin.x}px ${origin.y}px)`;
