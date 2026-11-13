@@ -403,7 +403,7 @@ export function chessMove(st, side, level, hist, opts) {
     // ≈ 500: wants to win material but only sees the very next move
     const mates = ms.filter((m) => { const ns = applyChess(st, m, "Q"); return inCheck(ns, opp) && !legalFor(ns, opp).length; });
     if (mates.length && Math.random() < 0.55) return rnd(mates);
-    if (Math.random() < 0.12) return rnd(ms); // sometimes a pure random move
+        if (Math.random() < (typeof o.blunder === "number" ? o.blunder : 0.12)) return rnd(ms); // sometimes a pure random move
     const base = sg * evalW(st.b);
     let bm = ms[0], bv = -Infinity;
     for (const m of ms) {
@@ -419,12 +419,12 @@ export function chessMove(st, side, level, hist, opts) {
     const scored = [];
     try {
       for (const m of ms) {
-        const v = -nega(applyChess(st, m, "Q"), opp, 1, -Infinity, Infinity, ctx, 1);
+              const v = -nega(applyChess(st, m, "Q"), opp, Math.max(0, (o.depth || 2) - 1), -Infinity, Infinity, ctx, 1);
         scored.push({ m, v: repAdj(m, v) + Math.random() * 22 });
       }
     } catch (e) { if (e !== TIME) throw e; return rnd(ms); }
     scored.sort((a, b) => b.v - a.v);
-    if (Math.random() < 0.13) return rnd(scored.slice(0, Math.min(4, scored.length)).filter((x) => x.v >= scored[0].v - 220)).m;
+        if (Math.random() < (typeof o.blunder === "number" ? o.blunder : 0.13)) return rnd(scored.slice(0, Math.min(4, scored.length)).filter((x) => x.v >= scored[0].v - 220)).m;
     return scored[0].m;
   }
 
@@ -451,7 +451,8 @@ export function chessMove(st, side, level, hist, opts) {
   } catch (e) { if (e !== TIME) throw e; }
   if (!done) return order[0];
   const top = done.slice(0, 4).map((x) => ({ m: x.m, v: repAdj(x.m, x.v) }));
-  top.sort((a, b) => b.v - a.v);
+    top.sort((a, b) => b.v - a.v);
+  if (o.blunder > 0 && top.length > 1 && Math.random() < o.blunder) return top[1 + Math.floor(Math.random() * (top.length - 1))].m;
   return top[0].m;
 }
 
@@ -560,7 +561,8 @@ function ChessDefs() {
 }
 
 /* ---------------- the game ---------------- */
-export default function ChessGame({ kit, ui, lang, S, role, names, level, side, net, onFinish }) {
+ export default function ChessGame({ kit, ui, lang, S, role, names, level, side, net, onFinish, lc, opt: optIn }) {
+  const opt = optIn || {};
   const { TurnBar, LastLine, Warn, useWarn, GC, TC, fmt } = kit;
   const K = CT[lang] || CT.en;
   const [wn, warn, shake] = useWarn();
@@ -577,7 +579,7 @@ export default function ChessGame({ kit, ui, lang, S, role, names, level, side, 
   const [why, setWhy] = useState("");
   const [last, setLast] = useState(null);
   const [ask, setAsk] = useState(null);
-  const [auto, setAuto] = useState(false);
+    const [auto, setAuto] = useState(!!opt.autoFlip);
   const [think, setThink] = useState(false);
   const alive = useRef(true);
   const fn = useRef({});
@@ -621,11 +623,11 @@ export default function ChessGame({ kit, ui, lang, S, role, names, level, side, 
     setLast({ who, m, id: moverId, piece: mover.t, pt: m.promo ? pt || "Q" : null, chk: chk && oppMoves.length > 0, k: Math.random() });
     if (online && !fromNet) net.send({ t: "ch", m: { fr: m.fr, fc: m.fc, tr: m.tr, tc: m.tc, pt: pt || null } });
     if (!oppMoves.length) { setWhy(chk ? "mate" : "stale"); finish(chk ? (who === 1 ? "host" : "guest") : "draw"); return; }
-    if (ns.half >= 100) { setWhy("fifty"); finish("draw"); return; }
+        if (opt.fifty !== false && ns.half >= 100) { setWhy("fifty"); finish("draw"); return; }
     if (insufficient(ns.b)) { setWhy("material"); finish("draw"); return; }
     const key = posKey(ns.b, opp, ns.cast, ns.ep);
     hist.current.push(key);
-    if (hist.current.filter((x) => x === key).length >= 3) { setWhy("rep"); finish("draw"); return; }
+        if (opt.repetition !== false && hist.current.filter((x) => x === key).length >= 3) { setWhy("rep"); finish("draw"); return; }
     setTurn(opp);
   };
   // the friend's move is only accepted if it really is legal for them right now
@@ -640,13 +642,13 @@ export default function ChessGame({ kit, ui, lang, S, role, names, level, side, 
 
   // the computer's move
   fn.current.ai = () => {
-    const m = chessMove(S0, aiP, level, hist.current);
+        const m = chessMove(S0, aiP, level, hist.current, lc || {});
     if (m) doMove(m, aiP, true, "Q");
   };
   useEffect(() => {
     if (!cpu || res || turn !== aiP) return undefined;
     setThink(true);
-    const t = setTimeout(() => { if (alive.current) fn.current.ai(); }, 650);
+        const t = setTimeout(() => { if (alive.current) fn.current.ai(); }, Number(lc && lc.delay) || 650);
     return () => { clearTimeout(t); setThink(false); };
   }, [turn, res]); // eslint-disable-line react-hooks/exhaustive-deps
 

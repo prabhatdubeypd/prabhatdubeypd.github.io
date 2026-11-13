@@ -4,6 +4,7 @@ import { useSettings } from "../context/SettingsContext";
 import { useData } from "../context/DataContext";
 import { tx } from "../lib/i18n";
 import Bell from "./Bell";
+import GamesBanner from "./GamesBanner";
 
 function useClock(lang, enabled) {
   const [now, setNow] = useState(new Date());
@@ -102,10 +103,10 @@ export default function Navbar() {
 
   
     // the card icon opens the games (or the card directly if the games are switched off in Supabase)
-  const summonCard = () => {
+    const summonCard = (game) => {
     const r = cardRef.current?.getBoundingClientRect();
     if (!r) return;
-    const detail = { x: r.left + r.width / 2, y: r.bottom };
+    const detail = { x: r.left + r.width / 2, y: r.bottom, game: typeof game === "string" ? game : undefined };
     const games = features.kingGames !== false;
     window.dispatchEvent(new CustomEvent(games ? "open-king-games" : "open-king-card", { detail }));
   };
@@ -159,18 +160,21 @@ export default function Navbar() {
           </button>
 
           {/* little card icon: tap it and the King card comes out */}
-          <button
-            ref={cardRef}
-            onClick={summonCard}
-            className={`${btn} grid place-items-center !px-2`}
-            aria-label="Open card"
-            title="Open card"
-          >
-            <svg width="14" height="16" viewBox="0 0 24 28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="2" width="18" height="24" rx="3" />
-              <path d="M12 8.5c-2.2 2.4-4.5 3.8-4.5 6 0 1.4 1.1 2.3 2.3 2.3 1 0 1.8-.5 2.2-1.3.4.8 1.2 1.3 2.2 1.3 1.2 0 2.3-.9 2.3-2.3 0-2.2-2.3-3.6-4.5-6z" fill="currentColor" stroke="none" />
-            </svg>
-          </button>
+                    <div className="relative">
+            <button
+              ref={cardRef}
+              onClick={() => summonCard()}
+              className={`${btn} grid place-items-center !px-2`}
+              aria-label="Open card"
+              title="Open card"
+            >
+              <svg width="14" height="16" viewBox="0 0 24 28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="2" width="18" height="24" rx="3" />
+                <path d="M12 8.5c-2.2 2.4-4.5 3.8-4.5 6 0 1.4 1.1 2.3 2.3 2.3 1 0 1.8-.5 2.2-1.3.4.8 1.2 1.3 2.2 1.3 1.2 0 2.3-.9 2.3-2.3 0-2.2-2.3-3.6-4.5-6z" fill="currentColor" stroke="none" />
+              </svg>
+            </button>
+            {features.kingGames !== false && <GamesBanner lang={lang} onPlay={summonCard} />}
+          </div>
 
           {/* bell: pull it to switch light / dark. Pushed to the right on wide screens (change xl:translate-x-8 to move it) */}
           <div className="shrink-0 xl:translate-x-8">

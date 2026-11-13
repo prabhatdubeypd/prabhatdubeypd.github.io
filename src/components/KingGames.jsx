@@ -169,17 +169,29 @@ const DEFAULTS = {
       hard: { cols: 14, rows: 14, speed: 120, target: 20, wrap: false, rocks: 8 },
     },
   },
-    chess: {
+      chess: {
     enabled: true, sort: 11, multiOnly: true,
     title: { en: "Chess", hi: "शतरंज" },
-    desc: { en: "The classic game of kings. Play a friend.", hi: "राजाओं का क्लासिक खेल। दोस्त के साथ खेलें।" },
-    levels: { easy: {} },
+    desc: { en: "The classic game of kings. Play a friend or the computer.", hi: "राजाओं का क्लासिक खेल। दोस्त या कंप्यूटर के साथ खेलें।" },
+    modes: "duel,pass,cpu",
+    options: { repetition: true, fifty: true, autoFlip: false },
+    levels: {
+      easy: { ms: 600, depth: 1, blunder: 0.12, delay: 600 },
+      medium: { ms: 1200, depth: 2, blunder: 0.13, delay: 650 },
+      hard: { ms: 1500, depth: 8, blunder: 0, delay: 650 },
+    },
   },
   ludo: {
     enabled: true, sort: 12, multiOnly: true,
     title: { en: "Ludo", hi: "लूडो" },
     desc: { en: "Roll, race your tokens home and capture rivals.", hi: "पासा फेंकें, गोटियाँ घर पहुँचाएँ और दुश्मन को पकड़ें।" },
-    levels: { easy: {} },
+    modes: "duel,pass,cpu",
+    options: { maxPlayers: 4, sixExtra: true, captureExtra: true, homeExtra: true, safeStars: true, dropBot: "medium" },
+    levels: {
+      easy: { bot: "easy", delay: 750 },
+      medium: { bot: "medium", delay: 750 },
+      hard: { bot: "hard", delay: 750 },
+    },
   },
 };
 
@@ -192,6 +204,8 @@ function mergeCfg(rows) {
     if (r.sort != null) d.sort = r.sort;
     if (r.title_en) d.title = { en: r.title_en, hi: r.title_hi || r.title_en };
     if (r.desc_en) d.desc = { en: r.desc_en, hi: r.desc_hi || r.desc_en };
+        if (r.modes != null) d.modes = r.modes;
+    if (r.options && typeof r.options === "object") d.options = { ...(d.options || {}), ...r.options };
     const lv = r.levels && typeof r.levels === "object" ? r.levels : {};
     LEVELS.forEach((k) => { if (lv[k]) d.levels[k] = { ...d.levels[k], ...lv[k] }; });
   });
@@ -1556,7 +1570,7 @@ function Memory({ cfg, T, onWin, onExit, again }) {
 }
 
 /* =====================  HUB ART  ===================== */
-function GameArt({ kind }) {
+export function GameArt({ kind }) {
   if (kind === "puzzle")
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 3, width: 52, height: 52 }}>
@@ -1737,11 +1751,14 @@ export default function KingGames() {
     return loadP.current;
   };
 
-  // the navbar button
+    // the navbar button
   useEffect(() => {
     const h = (e) => {
       const o = e.detail || { x: window.innerWidth - 60, y: 60 };
-            setOrigin(o); setStep("hub"); setGame(null); setResult(null); setLink(null); setMpJoin(null); setOpen(true);
+      setOrigin(o); setResult(null); setLink(null); setMpJoin(null);
+      if (o.game) { setGame(o.game); setStep("level"); } // tapped an icon on the banner
+      else { setGame(null); setStep("hub"); }
+      setOpen(true);
       ensure();
     };
     window.addEventListener("open-king-games", h);

@@ -522,7 +522,8 @@ function Pin({ s, color }) {
 }
 
 /* seats: [{ id?, name, bot? }]  (2 to 4).  mySeat: your index online / vs computer, -1 on one phone */
-export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level, net, onFinish }) {
+export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level, net, onFinish, lc, opt: optIn }) {
+  const opt = optIn || {};
   const { TurnBar, LastLine, Warn, useWarn, GC, fmt } = kit;
   const L = LT[lang] || LT.en;
   const [wn, warn, shake] = useWarn();
@@ -610,7 +611,7 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
     let cap = 0;
     if (p <= 50) {
       const idx = (STARTS[cor[who]] + p) % 52;
-      if (!SAFE.has(idx)) {
+            if (opt.safeStars === false || !SAFE.has(idx)) {
         g.tok = g.tok.map((a, s) =>
           s === who ? a : a.map((v) => {
             if (v >= 0 && v <= 50 && (STARTS[cor[s]] + v) % 52 === idx) { cap += 1; return -1; }
@@ -630,7 +631,7 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
       onFinish(who);
       return;
     }
-    endTurn(d === 6 || cap > 0 || home); // a 6, a capture or reaching home gives another roll
+        endTurn((d === 6 && opt.sixExtra !== false) || (cap > 0 && opt.captureExtra !== false) || (home && opt.homeExtra !== false));
   });
   // messages from friends wait here until this phone is ready for them (and only the right sender is accepted)
   fn.current.drain = () => {
@@ -663,15 +664,17 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
   useEffect(() => {
     if (!driving) return undefined;
     let t = 0;
-    if (g.phase === "roll") t = setTimeout(() => doRoll(1 + Math.floor(Math.random() * 6), false), 750);
+       const wait = Number(lc && lc.delay) || 750;
+    const brain = cpu ? (lc && lc.bot) || level : opt.dropBot || "medium"; // dropBot: the computer that replaces a friend who left
+    if (g.phase === "roll") t = setTimeout(() => doRoll(1 + Math.floor(Math.random() * 6), false), wait);
     else if (g.phase === "move") {
       t = setTimeout(() => {
         const gg = G.current;
         if (gg.phase !== "move") return;
-        const i = botPick(cpu ? level : "medium", gg.turn, gg.tok, cor, gg.movable, gg.dice);
+        const i = botPick(brain, gg.turn, gg.tok, cor, gg.movable, gg.dice);
         if (online) net.send({ t: "lm", i });
         playMove(i);
-      }, 850);
+      }, wait + 100);
     }
     return () => clearTimeout(t);
   }, [g.turn, g.phase, driving]); // eslint-disable-line react-hooks/exhaustive-deps

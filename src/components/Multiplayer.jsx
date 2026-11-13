@@ -23,12 +23,20 @@ const GC = "#f0cb62"; // gold = you (or player 1 on one phone)
 const TC = "#4fd1c5"; // teal = the other player
 const LEVELS = ["easy", "medium", "hard"];
 const SEATC = [GC, TC, "#ff7a8a", "#8ab4ff"]; // seat colors (Ludo uses all 4)
-// the ways each game can be played in "Play with a friend"
-const MODES = {
+// what the code can do for each game. The Supabase `games.modes` column can only switch these on or off.
+const IMPL = {
   dots: ["duel", "pass"], memory: ["duel"], checkers: ["duel", "pass"],
   chess: ["duel", "pass", "cpu"], ludo: ["duel", "pass", "cpu"],
 };
 const LEVELED = { dots: true, memory: true }; // these use the level in online / pass too
+const modesFor = (k, cfg) => {
+  const impl = IMPL[k] || [];
+  const m = cfg[k] && cfg[k].modes;
+  if (m == null || String(m).trim() === "") return impl;
+  const want = (Array.isArray(m) ? m : String(m).split(",")).map((x) => String(x).trim().toLowerCase());
+  return impl.filter((x) => want.includes(x));
+};
+const optOf = (cfg, k) => (cfg[k] && cfg[k].options) || {};
 const NULL_NET = { send() {}, sendU() {}, on: () => () => {} };
 const fmt = (s, o) => String(s).replace(/\{(\w+)\}/g, (_, k) => (o[k] ?? ""));
 const ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -1294,7 +1302,7 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
     if (g === "chess") sl = pick.side === 2 ? [{ name: S.computer, bot: true }, { name: myName }] : [{ name: myName }, { name: S.computer, bot: true }];
     else sl = [{ name: myName }, ...Array.from({ length: pick.n - 1 }, (_, i) => ({ name: pick.n > 2 ? `${S.computer} ${i + 1}` : S.computer, bot: true }))];
     setRole(null); setErr("");
-    begin({ game: g, level: pick.level, mode: "cpu", lc: {}, seats: sl, side: pick.side });
+        begin({ game: g, level: pick.level, mode: "cpu", lc: (cfg[g] && cfg[g].levels[pick.level]) || {}, seats: sl, side: pick.side });
   };
   const startOnline = () => {
     const g = pick.game;
@@ -1414,7 +1422,9 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
   }, [role, view, room.peers, err, room.state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ----- what to draw ----- */
-  const list = Object.keys(cfg).filter((k) => cfg[k].enabled && MODES[k]).sort((a, b) => (cfg[a].sort ?? 0) - (cfg[b].sort ?? 0));
+    const list = Object.keys(cfg).filter((k) => cfg[k].enabled && modesFor(k, cfg).length).sort((a, b) => (cfg[a].sort ?? 0) - (cfg[b].sort ?? 0));
+  const firstLevel = (k) => LEVELS.find((l) => !(cfg[k].levels[l] && cfg[k].levels[l].enabled === false)) || "easy";
+  const maxLudo = Math.min(4, Math.max(2, Number(optOf(cfg, "ludo").maxPlayers) || 4));
   const joinBad = view === "join" && !(join && cfg[join.g] && cfg[join.g].enabled);
   const inviteUrl = (() => {
     if (!code) return "";
@@ -1460,7 +1470,7 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
           {list.map((k, i) => (
             <motion.button
               key={k} type="button"
-              onClick={() => { setPick({ game: k, level: "easy", mode: MODES[k][0], n: k === "ludo" ? 4 : 2, side: 1 }); setView("level"); }}
+              onClick={() => { setPick({ game: k, level: firstLevel(k), mode: modesFor(k, cfg)[0], n: k === "ludo" ? maxLudo : 2, side: 1 }); setView("level"); }}
               initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.05 * i, type: "spring", stiffness: 160, damping: 18 }}
               whileHover={{ scale: 1.02, x: 4 }} whileTap={{ scale: 0.98 }}
               className="flex w-full items-center gap-4 rounded-2xl p-4 text-left" style={{ ...PANEL, boxShadow: "inset 0 0 0 1px rgba(240,203,98,.4), 0 10px 24px rgba(0,0,0,.4)" }}
@@ -1471,7 +1481,7 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
                 <span className="mt-1 block text-[12px] opacity-70">{tx(cfg[k].desc, lang)}</span>
               </div>
               <span className="flex shrink-0 flex-col items-end gap-1">
-                {MODES[k].map((m) => (
+                {modesFor(k, cfg).map((m) => (
                   <span key={m} className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ background: GOLD, color: "#3b2506" }}>
                     {modeLabel(m, S)}
                   </span>
@@ -1508,11 +1518,15 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
     const gk = pick.game, md = pick.mode, isLudo = gk === "ludo";
     const n = isLudo ? pick.n : 2;
     const leveled = md === "cpu" || !!LEVELED[gk];
-    const lvs = md === "cpu" ? LEVELS : LEVELS.filter((l) => cfg[gk].levels[l] && cfg[gk].levels[l].enabled !== false);
-    const lvInfo = (lv) =>
-      md === "cpu"
+        const lvs = LEVELS.filter((l) => !cfg[gk].levels[l] || cfg[gk].levels[l].enabled !== false);
+        const lvInfo = (lv) => {
+      const c = cfg[gk].levels[lv] || {};
+      const custom = lang === "hi" ? c.info_hi : c.info_en;
+      if (custom) return custom;
+      return md === "cpu"
         ? gk === "chess" ? (lv === "easy" ? S.eloEasy : lv === "medium" ? S.eloMed : S.eloHard) : lv === "easy" ? S.botEasy : lv === "medium" ? S.botMed : S.botHard
         : info(gk, lv);
+    };
     const go = md === "pass" ? startPass : md === "cpu" ? startCpu : startOnline;
     return (
       <div className="mx-auto max-w-[420px]">
@@ -1525,7 +1539,7 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
 
         <p className="mt-5 text-center font-mono text-[10px] uppercase tracking-[0.22em]" style={{ color: "#c9972f" }}>{S.howTo}</p>
         <div className="mt-2 flex flex-wrap justify-center gap-2">
-          {MODES[gk].map((m) => <Opt key={m} on={md === m} onClick={() => setPick({ ...pick, mode: m })}>{modeLabel(m, S)}</Opt>)}
+         {modesFor(gk, cfg).map((m) => <Opt key={m} on={md === m} onClick={() => setPick({ ...pick, mode: m })}>{modeLabel(m, S)}</Opt>)}
         </div>
         <p className="mt-1.5 text-center text-[11px] opacity-70">{md === "pass" ? S.passHint : md === "cpu" ? S.cpuHint : S.onlineHint}</p>
 
@@ -1533,7 +1547,7 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
           <>
             <p className="mt-4 text-center font-mono text-[10px] uppercase tracking-[0.22em]" style={{ color: "#c9972f" }}>{S.players}</p>
             <div className="mt-2 flex justify-center gap-2">
-              {[2, 3, 4].map((x) => <Opt key={x} on={pick.n === x} onClick={() => setPick({ ...pick, n: x })}>{fmt(S.nPlayers, { n: x })}</Opt>)}
+              {[2, 3, 4].filter((x) => x <= maxLudo).map((x) => <Opt key={x} on={pick.n === x} onClick={() => setPick({ ...pick, n: x })}>{fmt(S.nPlayers, { n: x })}</Opt>)}
             </div>
           </>
         )}
@@ -1736,10 +1750,9 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
       {game === "dots" && <DotsDuel key={runKey} ui={ui} lc={lc} role={gRole} names={names} net={netFor} S={S} onFinish={fin} />}
       {game === "memory" && deck && <MemoryDuel key={runKey} ui={ui} lc={lc} deck={deck} role={gRole} names={names} net={netFor} S={S} onFinish={fin} />}
       {game === "checkers" && <CheckersGame key={runKey} ui={ui} lang={lang} S={S} role={gRole} names={names} net={netFor} onFinish={fin} />}
-      {game === "chess" && <ChessGame key={runKey} kit={KIT} ui={ui} lang={lang} S={S} role={gRole} names={names} level={level} side={side} net={netFor} onFinish={fin} />}
-      {game === "ludo" && <LudoGame key={runKey} kit={KIT} ui={ui} lang={lang} S={S} role={gRole} seats={seats} mySeat={mySeat} level={level} net={netFor} onFinish={fin} />}
-
-      {online && <Reactions onEmo={sendEmo} floats={floats} />}
+           {game === "chess" && <ChessGame key={runKey} kit={KIT} ui={ui} lang={lang} S={S} role={gRole} names={names} level={level} side={side} lc={lc} opt={optOf(cfg, "chess")} net={netFor} onFinish={fin} />}
+      {game === "ludo" && <LudoGame key={runKey} kit={KIT} ui={ui} lang={lang} S={S} role={gRole} seats={seats} mySeat={mySeat} level={level} lc={lc} opt={optOf(cfg, "ludo")} net={netFor} onFinish={fin} />}
+       {online && <Reactions onEmo={sendEmo} floats={floats} />}
     </div>
   );
 }
