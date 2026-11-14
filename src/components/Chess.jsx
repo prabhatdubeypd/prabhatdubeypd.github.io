@@ -8,6 +8,7 @@ const CT = {
     notYours: "That is {name}'s piece", stuck: "This piece has no legal move", pickFirst: "Tap one of your pieces first",
     kingCheck: "Your king is in check! Move it or block the attack", leavesCheck: "That move would leave your king in check",
     badMove: "That piece cannot move there", wait: "Wait for {name} to move",
+    pickTitle: "Choose your side", pickGold: "Gold", pickBlack: "Black", pickWait: "Waiting for the host to choose…",
   },
   hi: {
     check: "शह!", mate: "शह और मात!", stale: "स्टेलमेट: बराबरी", fifty: "50 चालों में कोई प्रगति नहीं: बराबरी",
@@ -15,6 +16,7 @@ const CT = {
     notYours: "यह {name} का मोहरा है", stuck: "इस मोहरे की कोई वैध चाल नहीं", pickFirst: "पहले अपना कोई मोहरा छुएँ",
     kingCheck: "आपके राजा पर शह है! उसे हटाएँ या हमला रोकें", leavesCheck: "इस चाल से आपका राजा शह में रहेगा",
     badMove: "यह मोहरा वहाँ नहीं जा सकता", wait: "{name} की चाल का इंतज़ार करें",
+    pickTitle: "अपना पक्ष चुनें", pickGold: "सुनहरा", pickBlack: "काला", pickWait: "होस्ट के चुनने का इंतज़ार…",
   },
 };
 
@@ -569,8 +571,12 @@ function ChessDefs() {
   const local = role === "local";
   const cpu = role === "cpu";
   const online = role === "host" || role === "guest";
-  const myP = role === "host" ? 1 : role === "guest" ? 2 : cpu ? (side === 2 ? 2 : 1) : 0;
-  const aiP = cpu ? (myP === 1 ? 2 : 1) : 0;
+  const [chosen, setChosen] = useState(null); // side taken by you / Player 1 / the host: 1 = Gold (moves first), 2 = Black
+  const chosenRef = useRef(null);
+  const waiting = !chosen;
+  const hs = chosen || 1;
+  const myP = role === "host" ? hs : role === "guest" ? (hs === 1 ? 2 : 1) : cpu ? hs : 0;
+  const aiP = cpu ? (hs === 1 ? 2 : 1) : 0;
   const [pcs, setPcs] = useState(initPieces);
   const [meta, setMeta] = useState({ cast: { 1: { k: true, q: true }, 2: { k: true, q: true } }, ep: null, half: 0 });
   const [turn, setTurn] = useState(1);
@@ -589,8 +595,8 @@ function ChessDefs() {
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   const flipped = local ? auto && turn === 2 : myP === 2;
-  const colorOf = (s) => (local ? (s === 1 ? GC : TC) : s === myP ? GC : TC);
-  const nameOf = (s) => (s === 1 ? names.host : names.guest);
+  const colorOf = (s) => (s === 1 ? GC : TC);
+  const nameOf = (s) => (s === hs ? names.host : names.guest);
   const size = Math.floor(Math.min(boxW, 460));
   const cell = size / 8;
   const X = (c) => (flipped ? 7 - c : c);
@@ -601,7 +607,7 @@ function ChessDefs() {
   const S0 = { b: grid, cast: meta.cast, ep: meta.ep, half: meta.half };
   const moves = turn ? legalFor(S0, turn) : [];
   const checked = turn ? inCheck(S0, turn) : false;
-  const canAct = !res && turn !== 0 && !ask && (local || turn === myP);
+  const canAct = !res && !waiting && turn !== 0 && !ask && (local || turn === myP);
   const destMap = {};
   if (sel && canAct) moves.filter((m) => m.fr === sel[0] && m.fc === sel[1]).forEach((m) => { destMap[`${m.tr}-${m.tc}`] = m; });
 
@@ -622,7 +628,7 @@ function ChessDefs() {
     const chk = inCheck(s1, opp);
     setLast({ who, m, id: moverId, piece: mover.t, pt: m.promo ? pt || "Q" : null, chk: chk && oppMoves.length > 0, k: Math.random() });
     if (online && !fromNet) net.send({ t: "ch", m: { fr: m.fr, fc: m.fc, tr: m.tr, tc: m.tc, pt: pt || null } });
-    if (!oppMoves.length) { setWhy(chk ? "mate" : "stale"); finish(chk ? (who === 1 ? "host" : "guest") : "draw"); return; }
+    if (!oppMoves.length) { setWhy(chk ? "mate" : "stale"); finish(chk ? (who === hs ? "host" : "guest") : "draw"); return; }
         if (opt.fifty !== false && ns.half >= 100) { setWhy("fifty"); finish("draw"); return; }
     if (insufficient(ns.b)) { setWhy("material"); finish("draw"); return; }
     const key = posKey(ns.b, opp, ns.cast, ns.ep);
@@ -638,7 +644,13 @@ function ChessDefs() {
     const lm = moves.find((x) => x.fr === m.fr && x.fc === m.fc && x.tr === m.tr && x.tc === m.tc);
     if (lm) doMove(lm, opp, true, ["Q", "R", "B", "N"].includes(m.pt) ? m.pt : "Q");
   };
-  useEffect(() => net.on((msg) => { if (msg.t === "ch") fn.current.net(msg.m); }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => net.on((msg) => {
+    if (msg.t === "ch") fn.current.net(msg.m);
+    else if (msg.t === "cs" && role === "guest") setChosen(msg.s === 2 ? 2 : 1);
+    else if (msg.t === "cr" && role === "host" && chosenRef.current) net.send({ t: "cs", s: chosenRef.current });
+  }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (role === "guest") net.send({ t: "cr" }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const pickSide = (x) => { chosenRef.current = x; setChosen(x); if (role === "host") net.send({ t: "cs", s: x }); };
 
   // the computer's move
   fn.current.ai = () => {
@@ -646,14 +658,14 @@ function ChessDefs() {
     if (m) doMove(m, aiP, true, "Q");
   };
   useEffect(() => {
-    if (!cpu || res || turn !== aiP) return undefined;
+    if (!cpu || waiting || res || turn !== aiP) return undefined;
     setThink(true);
-        const t = setTimeout(() => { if (alive.current) fn.current.ai(); }, Number(lc && lc.delay) || 650);
+    const t = setTimeout(() => { if (alive.current) fn.current.ai(); }, Number(lc && lc.delay) || 650);
     return () => { clearTimeout(t); setThink(false); };
-  }, [turn, res]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [turn, res, chosen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onTap = (r, c) => {
-    if (res || !turn || ask) return;
+    if (res || !turn || ask || waiting) return;
     const key = `${r}-${c}`;
     const at = grid[r][c];
     if (!canAct) { warn(fmt(K.wait, { name: nameOf(myP === 1 ? 2 : 1) }), key); return; }
@@ -825,6 +837,41 @@ function ChessDefs() {
                         </motion.button>
                       ))}
                     </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* choose side (all modes): Gold always moves first */}
+            <AnimatePresence>
+              {waiting && (
+                <motion.div
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="absolute inset-0 z-30 grid place-items-center" style={{ background: "rgba(10,8,5,.78)", borderRadius: 8 }}
+                >
+                  <motion.div
+                    initial={{ scale: 0.85, y: 14 }} animate={{ scale: 1, y: 0 }} transition={{ type: "spring", stiffness: 220, damping: 18 }}
+                    className="rounded-2xl p-4 text-center" style={kit.PANEL}
+                  >
+                    {role === "guest" ? (
+                      <p className="text-[13px] font-semibold">{K.pickWait}</p>
+                    ) : (
+                      <>
+                        <p className="text-[13px] font-semibold">{K.pickTitle}</p>
+                        <div className="mt-3 flex gap-3">
+                          {[{ s: 1, gold: true, label: K.pickGold }, { s: 2, gold: false, label: K.pickBlack }].map((o) => (
+                            <motion.button
+                              key={o.s} type="button" onClick={() => pickSide(o.s)} whileHover={{ y: -4, scale: 1.05 }} whileTap={{ scale: 0.94 }}
+                              className="flex w-28 flex-col items-center rounded-xl px-2 py-3"
+                              style={{ background: "rgba(255,255,255,.1)", boxShadow: "inset 0 0 0 1px rgba(240,203,98,.5)" }}
+                            >
+                              <span style={{ width: 48, height: 48, display: "block" }}><PieceSvg t="K" gold={o.gold} /></span>
+                              <span className="mt-2 text-[12px] font-semibold leading-tight">{o.label}</span>
+                            </motion.button>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </motion.div>
                 </motion.div>
               )}
