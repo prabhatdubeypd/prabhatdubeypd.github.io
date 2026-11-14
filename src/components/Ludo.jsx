@@ -444,79 +444,41 @@ function LudoDefs({ cols }) {
     </svg>
   );
 }
-function Pin({ s, color }) {
-  const edge = mix(color, -0.65);
 
-  const body =
-    "M30 76 C27 66 6 47 6 27 A24 24 0 0 1 54 27 C54 47 33 66 30 76 Z";
 
+function Pin({ color }) {
+  // every pin builds its own paint from its own color, so it never depends on which seat it belongs to
+  const uid = "pn" + String(color).replace(/[^0-9a-z]/gi, "");
+  const body = "M30 76 C27 66 6 47 6 27 A24 24 0 0 1 54 27 C54 47 33 66 30 76 Z";
   return (
     <svg
-      viewBox="0 0 60 80"
-      width="100%"
-      height="100%"
-      style={{
-        display: "block",
-        overflow: "visible",
-        filter: "drop-shadow(0 2px 2px rgba(0,0,0,.38))",
-      }}
+      viewBox="0 0 60 80" width="100%" height="100%"
+      style={{ display: "block", overflow: "visible", filter: "drop-shadow(0 2px 2px rgba(0,0,0,.38))" }}
     >
+      <defs>
+        <radialGradient id={`${uid}h`} cx=".36" cy=".3" r=".8">
+          <stop offset="0" stopColor={mix(color, 0.55)} />
+          <stop offset=".45" stopColor={color} />
+          <stop offset="1" stopColor={mix(color, -0.35)} />
+        </radialGradient>
+        <linearGradient id={`${uid}b`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor={mix(color, 0.35)} />
+          <stop offset=".5" stopColor={color} />
+          <stop offset="1" stopColor={mix(color, -0.4)} />
+        </linearGradient>
+      </defs>
+
       {/* deep outer edge */}
-      <path
-        d={body}
-        fill="none"
-        stroke="rgba(0,0,0,.45)"
-        strokeWidth="8"
-        strokeLinejoin="round"
-      />
-
+      <path d={body} fill="none" stroke="rgba(0,0,0,.45)" strokeWidth="8" strokeLinejoin="round" />
       {/* main body */}
-      <path
-        d={body}
-        fill={`url(#lb${s})`}
-        stroke="#ffffff"
-        strokeWidth="2.8"
-        strokeLinejoin="round"
-      />
-
+      <path d={body} fill={`url(#${uid}b)`} stroke="#ffffff" strokeWidth="2.8" strokeLinejoin="round" />
       {/* inner glossy ring */}
-      <circle
-        cx="30"
-        cy="27"
-        r="14"
-        fill="rgba(255,255,255,.22)"
-        stroke="#ffffff"
-        strokeOpacity=".72"
-        strokeWidth="1.2"
-      />
-
+      <circle cx="30" cy="27" r="14" fill="rgba(255,255,255,.22)" stroke="#ffffff" strokeOpacity=".72" strokeWidth="1.2" />
       {/* center */}
-      <circle
-        cx="30"
-        cy="27"
-        r="9"
-        fill={`url(#lh${s})`}
-      />
-
+      <circle cx="30" cy="27" r="9" fill={`url(#${uid}h)`} />
       {/* glossy reflection */}
-      <ellipse
-        cx="25"
-        cy="14"
-        rx="7"
-        ry="3.4"
-        fill="#ffffff"
-        opacity=".6"
-        transform="rotate(-25 25 14)"
-      />
-
-      {/* tiny secondary reflection */}
-      <circle
-        cx="36"
-        cy="33"
-        r="2.2"
-        fill="#ffffff"
-        opacity=".18"
-      />
+      <ellipse cx="25" cy="14" rx="7" ry="3.4" fill="#ffffff" opacity=".6" transform="rotate(-25 25 14)" />
+      <circle cx="36" cy="33" r="2.2" fill="#ffffff" opacity=".18" />
     </svg>
   );
 }
