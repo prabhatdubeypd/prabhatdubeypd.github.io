@@ -96,7 +96,7 @@ const dayIndex = () => { const d = new Date(); return Math.floor(Date.UTC(d.getF
 
 /* which game + level is today's challenge (rotates every day, or fixed by game_settings) */
 export function dailyPick(cfg, st) {
-   const keys = Object.keys(cfg).filter((k) => cfg[k] && cfg[k].enabled && !cfg[k].multiOnly).sort((a, b) => (cfg[a].sort ?? 0) - (cfg[b].sort ?? 0));
+   const keys = Object.keys(cfg).filter((k) => cfg[k] && cfg[k].enabled && !cfg[k].untimed).sort((a, b) => (cfg[a].sort ?? 0) - (cfg[b].sort ?? 0));
   if (!keys.length) return null;
   const day = dayIndex();
   const game = st.daily_game && keys.includes(st.daily_game) ? st.daily_game : keys[day % keys.length];

@@ -8,7 +8,9 @@ import { tx } from "../lib/i18n";
 import { CW, CH, frontToDataUrl } from "./KingCard";
 import { Checkers, HigherLower, WaterSort, SnakeGame } from "./MoreGames";
 import { useSocial, readLink, clearLink, ResultScreen, ChallengeScreen, ChallengeChip, DailyCard, HubFooter, Leaderboard, fmtTime } from "./GameSocial";
-import MultiplayerFlow, { MpHubButton, readRoomLink, clearRoomLink } from "./Multiplayer";
+import MultiplayerFlow, { MpHubButton, readRoomLink, clearRoomLink, KIT, mpText } from "./Multiplayer";
+import ChessGame from "./Chess";
+import LudoGame from "./Ludo";
 
 const GOLD = "linear-gradient(180deg,#fff3bf 0%,#f0cb62 30%,#b8862b 58%,#f6dc8c 80%,#c9972f 100%)";
 const goldText = { backgroundImage: GOLD, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" };
@@ -169,8 +171,8 @@ const DEFAULTS = {
       hard: { cols: 14, rows: 14, speed: 120, target: 20, wrap: false, rocks: 8 },
     },
   },
-      chess: {
-    enabled: true, sort: 11, multiOnly: true,
+       chess: {
+    enabled: true, sort: 11, untimed: true,
     title: { en: "Chess", hi: "शतरंज" },
     desc: { en: "The classic game of kings. Play a friend or the computer.", hi: "राजाओं का क्लासिक खेल। दोस्त या कंप्यूटर के साथ खेलें।" },
     modes: "duel,pass,cpu",
@@ -182,7 +184,7 @@ const DEFAULTS = {
     },
   },
   ludo: {
-    enabled: true, sort: 12, multiOnly: true,
+    enabled: true, sort: 12, untimed: true,
     title: { en: "Ludo", hi: "लूडो" },
     desc: { en: "Roll, race your tokens home and capture rivals.", hi: "पासा फेंकें, गोटियाँ घर पहुँचाएँ और दुश्मन को पकड़ें।" },
     modes: "duel,pass,cpu",
@@ -193,6 +195,7 @@ const DEFAULTS = {
       hard: { bot: "hard", delay: 750 },
     },
   },
+  
 };
 
 function mergeCfg(rows) {
@@ -1707,11 +1710,60 @@ function WinScreen({ art, T, onOpen }) {
 }
 
 const UI = { Pill, goldText, GOLD, chipStyle, Flip, PlayingFace, CardBack, sleep, STOP, num, useWidth, MEM_CARDS, shuffleArr };
+
+const NULL_NET = { send() {}, sendU() {}, on: () => () => {} };
+const SoloOpt = ({ on, onClick, children }) => (
+  <motion.button
+    type="button" onClick={onClick} whileTap={{ scale: 0.96 }}
+    className="rounded-full px-4 py-2 text-[12px] font-semibold"
+    style={on ? { background: GOLD, color: "#3b2506" } : { color: "#efe8d6", ...chipStyle }}
+  >
+    {children}
+  </motion.button>
+);
+const hasCpu = (c) => /(^|,)\s*cpu\s*(,|$)/i.test(String(c.modes || ""));
+
+// Chess and Ludo against the computer, inside the normal games window
+function SoloCpu({ game, T, lang, S, lcfg, opt, level, nick, n, side, onWin, onExit }) {
+  const [run, setRun] = useState(0);
+  const [end, setEnd] = useState(null); // null | lose | draw
+  const me = nick || (lang === "hi" ? "खिलाड़ी" : "Player");
+  const seats =
+    game === "ludo"
+      ? [{ name: me }, ...Array.from({ length: n - 1 }, (_, i) => ({ name: n > 2 ? `${S.computer} ${i + 1}` : S.computer, bot: true }))]
+      : null;
+  const names = side === 2 ? { host: S.computer, guest: me } : { host: me, guest: S.computer };
+  const fin = (w) => {
+    const won = game === "ludo" ? w === 0 : w === (side === 2 ? "guest" : "host");
+    if (won) onWin();
+    else setEnd(w === "draw" ? "draw" : "lose");
+  };
+  return (
+    <div>
+      {game === "chess" && (
+        <ChessGame key={run} kit={KIT} ui={UI} lang={lang} S={S} role="cpu" names={names} level={level} side={side} lc={lcfg} opt={opt} net={NULL_NET} onFinish={fin} />
+      )}
+      {game === "ludo" && (
+        <LudoGame key={run} kit={KIT} ui={UI} lang={lang} S={S} role="cpu" seats={seats} mySeat={0} level={level} lc={lcfg} opt={opt} net={NULL_NET} onFinish={fin} />
+      )}
+      {end && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 text-center">
+          <p className="font-serif text-2xl font-bold" style={goldText}>{end === "draw" ? T.draw : T.rivalWins}</p>
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
+            <Pill gold onClick={() => { setEnd(null); setRun((r) => r + 1); }}>{T.tryAgain}</Pill>
+            <Pill onClick={onExit}>{T.changeLevel}</Pill>
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
 /* =====================  THE OVERLAY  ===================== */
 export default function KingGames() {
   const { lang } = useSettings();
   const { profile } = useData();
   const T = TXT[lang] || TXT.en;
+    const S = mpText(lang);
   const [open, setOpen] = useState(false);
   const [origin, setOrigin] = useState({ x: 0, y: 0 });
   const [step, setStep] = useState("hub"); // hub | level | play | win
@@ -1723,6 +1775,7 @@ export default function KingGames() {
   const [result, setResult] = useState(null); // the score of the game that was just won
   const [link, setLink] = useState(null); // a challenge that came from a shared link
     const [mpJoin, setMpJoin] = useState(null); // an invite to a live game that came from a link
+      const [soloOpt, setSoloOpt] = useState({ n: 2, side: 1 }); // Ludo players / Chess side
   const soc = useSocial(cfg); // sharing, challenge links, leaderboard, daily challenge, personal bests
   const originRef = useRef(origin);
   const winTimer = useRef(null);
@@ -1850,6 +1903,14 @@ export default function KingGames() {
   // a game reports its win here. `stats` may carry { secs, moves }
   const win = (stats = {}) => {
     if (stepRef.current !== "play") return;
+        if (cfg[game] && cfg[game].untimed) { // Chess and Ludo have no timed score
+      setResult(null);
+      setStep("win");
+      clearTimeout(winTimer.current);
+      const au = Number(soc.settings.auto_open_ms) || 0;
+      if (au > 0) winTimer.current = setTimeout(openCard, au);
+      return;
+    }
     const secs =
       typeof stats.secs === "number" && stats.secs > 0
         ? stats.secs
@@ -1868,13 +1929,24 @@ export default function KingGames() {
 
   if (typeof document === "undefined") return null;
 
-    const games = Object.keys(cfg).filter((k) => cfg[k].enabled && !cfg[k].multiOnly).sort((a, b) => cfg[a].sort - cfg[b].sort);
+      const games = Object.keys(cfg).filter((k) => cfg[k].enabled && (!cfg[k].untimed || hasCpu(cfg[k]))).sort((a, b) => cfg[a].sort - cfg[b].sort);
   const R = Math.hypot(window.innerWidth, window.innerHeight) + 120;
   const c0 = `circle(0px at ${origin.x}px ${origin.y}px)`;
   const c1 = `circle(${R}px at ${origin.x}px ${origin.y}px)`;
   const g = game ? cfg[game] : null;
   const lvCfg = g ? g.levels[level] || {} : {};
   const openLevels = g ? LEVELS.filter((lv) => g.levels[lv] && g.levels[lv].enabled !== false) : [];
+
+    const maxLudo = Math.min(4, Math.max(2, Number(g && g.options && g.options.maxPlayers) || 4));
+  // level text: your own text from Supabase first, then a sensible default
+  const infoFor = (k, lv) => {
+    const c = (cfg[k] && cfg[k].levels[lv]) || {};
+    const custom = lang === "hi" ? c.info_hi : c.info_en;
+    if (custom) return custom;
+    if (k === "chess") return lv === "easy" ? S.eloEasy : lv === "medium" ? S.eloMed : S.eloHard;
+    if (k === "ludo") return lv === "easy" ? S.botEasy : lv === "medium" ? S.botMed : S.botHard;
+    return levelInfo(k, c, T);
+  };
     // fastest time you have on any level of a game
   const bestAny = (k) => {
     let m = null;
@@ -1896,6 +1968,13 @@ export default function KingGames() {
       {k === "higherlower" && <Retryable Game={HigherLower} ui={UI} key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
       {k === "watersort" && <Retryable Game={WaterSort} ui={UI} key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
       {k === "snake" && <Retryable Game={SnakeGame} ui={UI} key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
+            {(k === "chess" || k === "ludo") && (
+        <SoloCpu
+          key={keyId} game={k} T={T} lang={lang} S={S} lcfg={lcfg} opt={(cfg[k] && cfg[k].options) || {}}
+          level={lv} nick={soc.nick} n={Math.min(soloOpt.n, maxLudo)} side={soloOpt.side}
+          onWin={onWinFn} onExit={onExitFn}
+        />
+      )}
     </>
   );
 
@@ -2022,6 +2101,22 @@ export default function KingGames() {
                           <h2 className="mt-2 font-serif text-3xl font-bold" style={goldText}>{tx(g.title, lang)}</h2>
                           <p className="mt-1 text-sm opacity-70">{T.chooseLevel}</p>
                         </div>
+
+                                                {(game === "chess" || game === "ludo") && (
+                          <div className="mt-4 text-center">
+                            <p className="font-mono text-[10px] uppercase tracking-[0.22em]" style={{ color: "#c9972f" }}>{game === "ludo" ? S.players : S.playAs}</p>
+                            <div className="mt-2 flex justify-center gap-2">
+                              {game === "ludo"
+                                ? [2, 3, 4].filter((x) => x <= maxLudo).map((x) => (
+                                    <SoloOpt key={x} on={Math.min(soloOpt.n, maxLudo) === x} onClick={() => setSoloOpt({ ...soloOpt, n: x })}>{KIT.fmt(S.nPlayers, { n: x })}</SoloOpt>
+                                  ))
+                                : [1, 2].map((x) => (
+                                    <SoloOpt key={x} on={soloOpt.side === x} onClick={() => setSoloOpt({ ...soloOpt, side: x })}>{x === 1 ? S.first : S.second}</SoloOpt>
+                                  ))}
+                            </div>
+                          </div>
+                        )}  
+
                         <div className="mt-5 space-y-3">
                           {openLevels.map((lv, i) => {
                             const b = soc.bestOf(game, lv);
@@ -2035,7 +2130,7 @@ export default function KingGames() {
                               >
                                 <span>
                                   <b className="block font-serif text-xl" style={goldText}>{T[lv]}</b>
-                                  <span className="mt-0.5 block text-[12px] opacity-70">{levelInfo(game, g.levels[lv], T)}</span>
+                                  <span className="mt-0.5 block text-[12px] opacity-70">{infoFor(game, lv)} </span>
                                   {b && <span className="mt-1 block text-[11px] font-semibold" style={{ color: "#e8c15a" }}>★ {fmtTime(b.secs)}</span>}
                                 </span>
                                 <Dots n={i + 1} />
@@ -2043,7 +2138,7 @@ export default function KingGames() {
                             );
                           })}
                         </div>
-                        {soc.settings.leaderboard && (
+                        {soc.settings.leaderboard && !g.untimed && (
                           <Leaderboard lang={lang} rows={soc.boards[game]} levels={openLevels} size={soc.settings.board_size} lvLabel={(l) => T[l]} />
                         )}
                       </div>

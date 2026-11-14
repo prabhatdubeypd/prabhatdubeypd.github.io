@@ -606,7 +606,8 @@ function useWarn() {
   return [w, warn, shake];
 }
 
-const KIT = { TurnBar, LastLine, Warn, useWarn, GC, TC, FRAME, PANEL, chipStyle, GOLD, goldText, fmt };
+export const KIT = { TurnBar, LastLine, Warn, useWarn, GC, TC, FRAME, PANEL, chipStyle, GOLD, goldText, fmt };
+export const mpText = (lang) => MT[lang] || MT.en;
 
 function InviteBar({ S, url, text }) {
   const [note, setNote] = useState("");
