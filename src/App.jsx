@@ -13,6 +13,7 @@ import MetaSync from "./components/MetaSync";
 import CodeGuard from "./components/CodeGuard";
 import HireNudge from "./components/HireNudge";
 import ChatBot from "./components/ChatBot";
+import ShareSite from "./components/ShareSite";
 
 export default function App() {
   const { loading, error } = useData();
@@ -26,7 +27,7 @@ export default function App() {
         <>
         <MetaSync />
         <CodeGuard />
-          <HireModal /><HireNudge />
+          <HireModal /><HireNudge /> <ShareSite />
           <PrivacyModal />
           <ConsentBanner />          <ChatBot />
           <RoomScroll />

@@ -94,6 +94,11 @@ export default function Footer() {
                   {tr("cookie_settings", "Cookie settings")}
                 </button>
               </li>
+                            <li>
+                <button type="button" onClick={fire("open-share")} className={a}>
+                  {tr("share_site", "Share this site")}
+                </button>
+              </li>
             </ul>
           </div>
 
