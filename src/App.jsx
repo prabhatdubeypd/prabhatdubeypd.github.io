@@ -14,6 +14,8 @@ import CodeGuard from "./components/CodeGuard";
 import HireNudge from "./components/HireNudge";
 import ChatBot from "./components/ChatBot";
 import ShareSite from "./components/ShareSite";
+import SiteExtras from "./components/SiteExtras";
+import Snippets from "./components/Snippets";
 
 export default function App() {
   const { loading, error } = useData();
@@ -31,10 +33,10 @@ export default function App() {
           <PrivacyModal />
           <ConsentBanner />          <ChatBot />
           <RoomScroll />
-          <Navbar />
+          <Navbar /> <SiteExtras />
           <main className="mx-auto max-w-6xl px-6 pt-28">
             <Hero />
-            <Books />
+            <Books /> <Snippets /> 
             <Story />
           </main>
           <Footer />
