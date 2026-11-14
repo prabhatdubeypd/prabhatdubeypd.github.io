@@ -22,6 +22,8 @@ const ST = {
     via: "Send it", native: "Share…", whatsapp: "WhatsApp", telegram: "Telegram", x: "X", email: "Email",
     qr: "QR code", scan: "Scan to open", save: "Save QR image", saved: "QR image saved", send: "Share QR image", making: "Making…",
     close: "Close", scanTo: "Scan to open", point: "Point your camera here", subject: "Have a look",
+        allApps: "All apps…", facebook: "Facebook", instagram: "Instagram",
+    igCopied: "Link copied. Paste it in Instagram (story, bio or message).",
   },
   hi: {
     share: "शेयर", title: "यह साइट शेयर करें", pick: "क्या शेयर करना है?", here: "आप यहाँ हैं",
@@ -29,6 +31,8 @@ const ST = {
     via: "भेजें", native: "शेयर…", whatsapp: "WhatsApp", telegram: "Telegram", x: "X", email: "ईमेल",
     qr: "QR कोड", scan: "खोलने के लिए स्कैन करें", save: "QR इमेज सेव करें", saved: "QR इमेज सेव हो गई", send: "QR इमेज शेयर करें", making: "बन रही है…",
     close: "बंद करें", scanTo: "खोलने के लिए स्कैन करें", point: "अपना कैमरा यहाँ दिखाएँ", subject: "यह देखिए",
+        allApps: "सभी ऐप…", facebook: "Facebook", instagram: "Instagram",
+    igCopied: "लिंक कॉपी हो गया। Instagram में (स्टोरी, बायो या मैसेज में) पेस्ट करें।",
   },
 };
 const SEC = {
@@ -383,6 +387,30 @@ export default function ShareSite() {
     setBusy(false);
   };
 
+    const facebook = () => go(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, "facebook");
+  const instagram = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      // phones: send the QR poster through the share sheet, then pick Instagram there
+      const probe = new File(["x"], "a.png", { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [probe] })) {
+        const blob = await poster();
+        const file = new File([blob], "qr.png", { type: "image/png" });
+        await navigator.share({ files: [file], title: label, text: `${text} ${url}` });
+        track("share_via", { via: "instagram", target });
+      } else {
+        // computers: Instagram has no link-sharing address, so copy the link and open Instagram
+        await copy();
+        flash(S.igCopied);
+        window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+        track("share_via", { via: "instagram", target });
+      }
+    } catch (e) { if (e && e.name !== "AbortError") flash(S.fail); }
+    setBusy(false);
+  };
+  const dot = (c) => <i className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ background: c }} />;
+
   const chip = (on) =>
     `inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition ${on ? "border-transparent bg-btn text-btn-ink" : "border-line hover:bg-ink/5"}`;
   const act = "rounded-full border border-line px-3.5 py-2 text-xs font-medium transition hover:bg-ink/10 active:scale-95";
@@ -452,10 +480,16 @@ export default function ShareSite() {
                 <button type="button" onClick={copy} className="rounded-xl bg-btn px-4 text-xs font-semibold text-btn-ink transition active:scale-95">{S.copy}</button>
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                {canNative && <button type="button" onClick={nativeShare} className={act}>↗ {S.native}</button>}
-                <button type="button" onClick={() => go(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "whatsapp")} className={act}>{S.whatsapp}</button>
-                <button type="button" onClick={() => go(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`, "telegram")} className={act}>{S.telegram}</button>
+               <div className="mt-4 flex flex-wrap gap-2">
+                {canNative && (
+                  <button type="button" onClick={nativeShare} className="rounded-full bg-btn px-4 py-2 text-xs font-semibold text-btn-ink transition active:scale-95">
+                    ↗ {S.allApps}
+                  </button>
+                )}  
+                <button type="button" onClick={instagram} disabled={busy} className={`${act} disabled:opacity-60`}>{dot("#E1306C")}{S.instagram}</button>
+                <button type="button" onClick={facebook} className={act}>{dot("#1877F2")}{S.facebook}</button>
+                <button type="button" onClick={() => go(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "whatsapp")} className={act}>{dot("#25D366")}{S.whatsapp}</button>
+                <button type="button" onClick={() => go(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`, "telegram")} className={act}>{dot("#27A7E7")}{S.telegram}</button>
                 <button type="button" onClick={() => go(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, "x")} className={act}>{S.x}</button>
                 <button type="button" onClick={() => go(`mailto:?subject=${encodeURIComponent(`${S.subject}: ${label}`)}&body=${encodeURIComponent(`${text}\n${url}`)}`, "email")} className={act}>{S.email}</button>
               </div>
