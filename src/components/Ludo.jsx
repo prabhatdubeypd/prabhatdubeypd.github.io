@@ -1093,7 +1093,7 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
                       <motion.div
                         key={`${t.s}-${t.i}`} initial={false}
                         animate={{ x: `${t.col * 100}%`, y: `${t.row * 100}%` }}
-                        transition={{ x: { type: "spring", stiffness: 340, damping: 30 }, y: { type: "spring", stiffness: 340, damping: 30 } }}
+                        transition={{ x: { type: "spring", stiffness: 420, damping: 34 }, y: { type: "spring", stiffness: 420, damping: 34 } }}
                         onClick={() => tapToken(t.s, t.i)}
                         style={{ position: "absolute", left: 0, top: 0, width: `${cellPct}%`, height: `${cellPct}%`, cursor: pick ? "pointer" : "default", zIndex: pick ? 6 : hop ? 7 : 3 }}
                       >
