@@ -25,8 +25,10 @@ function useDesktop() {
   return d;
 }
 
-/* ---------- Media inside the device ---------- */
-function DeviceVideo({ src, poster, active, muted }) {
+/* ---------- Media inside the device ----------
+   Every video / image is shown with object-contain (never cropped) and reports its real
+   width / height ratio up to the device through onRatio, so the device can resize itself. */
+function DeviceVideo({ src, poster, active, muted, onRatio }) {
   const ref = useRef(null);
   const [armed, setArmed] = useState(active); // the video only downloads once its slide is reached
   useEffect(() => { if (active) setArmed(true); }, [active]);
@@ -37,6 +39,10 @@ function DeviceVideo({ src, poster, active, muted }) {
     if (active) v.play().catch(() => {});
     else v.pause();
   }, [active, muted, armed]);
+  const report = (e) => {
+    const v = e.currentTarget;
+    if (v.videoWidth && v.videoHeight) onRatio?.(v.videoWidth / v.videoHeight);
+  };
   return (
     <video
       ref={ref}
@@ -46,14 +52,28 @@ function DeviceVideo({ src, poster, active, muted }) {
       muted
       playsInline
       preload={armed ? "metadata" : "none"}
-      className="h-full w-full object-cover"
+      onLoadedMetadata={report}
+      className="h-full w-full bg-black object-contain"
     />
   );
 }
 
-function Media({ p, title, active, muted, t }) {
-  if (p.video) return <DeviceVideo src={p.video} poster={p.image} active={active} muted={muted} />;
-   if (p.image) return <img src={p.image} alt={title} loading="lazy" decoding="async" className="h-full w-full object-cover" />;
+function Media({ p, title, active, muted, t, onRatio }) {
+  if (p.video) return <DeviceVideo src={p.video} poster={p.image} active={active} muted={muted} onRatio={onRatio} />;
+  if (p.image)
+    return (
+      <img
+        src={p.image}
+        alt={title}
+        loading="lazy"
+        decoding="async"
+        onLoad={(e) => {
+          const im = e.currentTarget;
+          if (im.naturalWidth && im.naturalHeight) onRatio?.(im.naturalWidth / im.naturalHeight);
+        }}
+        className="h-full w-full bg-black object-contain"
+      />
+    );
   return (
     <div className="grid h-full place-items-center bg-gradient-to-br from-zinc-800 to-zinc-950 text-center text-xs text-white/60">
       <div>
@@ -67,6 +87,7 @@ function Media({ p, title, active, muted, t }) {
 /* ---------- Premium 3D device frames ---------- */
 const GLARE = "linear-gradient(115deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 38%, rgba(255,255,255,0) 100%)";
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 // edge colours of the device body, from the front to the back (gives the real thickness)
 const MON_EDGE = ["#141416", "#18181a", "#1f1f22", "#2b2b2f", "#45454a", "#6a6865", "#8d8a85", "#a7a49f"];
@@ -115,11 +136,14 @@ function Tilt({ baseY, baseX = 3, range = 9, className = "", floor, children }) 
   );
 }
 
-function Device({ type, flip, children }) {
+/* ratio = real width / height of the media (null until it has loaded) */
+function Device({ type, flip, ratio, children }) {
   const side = flip ? 1 : -1; // tilts toward the text
+  const desktop = useDesktop();
 
-  /* plain screen, no frame */
+  /* plain screen, no frame: takes the exact shape of the media */
   if (type === "none") {
+    const r = clamp(ratio || 16 / 9, 0.75, 2.4);
     return (
       <Tilt
         baseY={side * 8}
@@ -129,7 +153,10 @@ function Device({ type, flip, children }) {
         floor={<div className="pointer-events-none absolute -bottom-6 left-[8%] right-[8%] h-6 rounded-[50%] bg-black/25 blur-xl" />}
       >
         {(glare) => (
-          <div className="relative aspect-video overflow-hidden rounded-2xl bg-black shadow-2xl ring-1 ring-black/10">
+          <div
+            className="relative overflow-hidden rounded-2xl bg-black shadow-2xl ring-1 ring-black/10"
+            style={{ aspectRatio: r }}
+          >
             {children}
             <motion.div className="pointer-events-none absolute inset-0" style={{ background: glare, mixBlendMode: "screen" }} />
           </div>
@@ -138,8 +165,17 @@ function Device({ type, flip, children }) {
     );
   }
 
-  /* premium 3D phone: titanium frame with real thickness, side buttons, dynamic island */
+  /* premium 3D phone: titanium frame with real thickness, side buttons, dynamic island.
+     The phone keeps its height; its width follows the video's ratio. The camera sits in its
+     own black strip ABOVE the video, so it never covers the picture. */
   if (type === "phone") {
+    const H = desktop ? 440 : 270; // phone height (same as before)
+    const PAD = desktop ? 20 : 16; // frame + bezel, per side pair
+    const STRIP = desktop ? 36 : 24; // black strip at the top that holds the camera
+    const areaH = H - PAD - STRIP; // height left for the video
+    const r = clamp(ratio || 0.51, 0.4, 0.8); // default = the old phone shape
+    const W = Math.round(areaH * r + PAD);
+
     return (
       <Tilt
         baseY={side * 14}
@@ -149,8 +185,8 @@ function Device({ type, flip, children }) {
       >
         {(glare) => (
           <div
-            className="relative h-[270px] w-[134px] md:h-[440px] md:w-[216px]"
-            style={{ transformStyle: "preserve-3d" }}
+            className="relative transition-[width] duration-300"
+            style={{ transformStyle: "preserve-3d", height: H, width: W }}
           >
             {/* body thickness: layers behind the front, so the side edge shows when it turns */}
             {PHONE_EDGE.map((c, k) => (
@@ -176,10 +212,16 @@ function Device({ type, flip, children }) {
               }}
             >
               <div className="h-full w-full rounded-[27px] bg-black p-[5px] md:rounded-[39px] md:p-[7px]">
-                <div className="relative h-full w-full overflow-hidden rounded-[22px] bg-black md:rounded-[33px]">
-                  {children}
-                  {/* dynamic island */}
-                  <div className="absolute left-1/2 top-[7px] z-10 h-[14px] w-[46px] -translate-x-1/2 rounded-full bg-black md:top-[10px] md:h-[22px] md:w-[72px]" />
+                <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[22px] bg-black md:rounded-[33px]">
+                  {/* camera strip (the video starts below it) */}
+                  <div className="relative shrink-0 bg-black" style={{ height: STRIP }}>
+                    {/* dynamic island */}
+                    <div className="absolute left-1/2 top-[7px] z-10 h-[14px] w-[46px] -translate-x-1/2 rounded-full bg-black ring-1 ring-white/10 md:top-[10px] md:h-[22px] md:w-[72px]" />
+                  </div>
+                  {/* video area: fits any video, nothing is cropped */}
+                  <div className="relative min-h-0 flex-1 bg-black">
+                    <div className="absolute inset-0">{children}</div>
+                  </div>
                   {/* glass glare */}
                   <div className="pointer-events-none absolute inset-0" style={{ background: GLARE }} />
                   <motion.div className="pointer-events-none absolute inset-0" style={{ background: glare, mixBlendMode: "screen" }} />
@@ -192,7 +234,9 @@ function Device({ type, flip, children }) {
     );
   }
 
-  /* premium 3D monitor: thin black bezel, thick body, aluminium neck and flat oval base */
+  /* premium 3D monitor: thin black bezel, thick body, aluminium neck and flat oval base.
+     The screen takes the exact shape of the video. */
+  const mr = clamp(ratio || 16 / 9, 0.75, 2.4);
   return (
     <Tilt
       baseY={side * 12}
@@ -217,7 +261,7 @@ function Device({ type, flip, children }) {
               className="relative rounded-[16px] bg-[#0b0b0c] p-[6px] shadow-[0_24px_50px_-12px_rgba(0,0,0,.5)] ring-1 ring-white/10 md:rounded-[22px] md:p-[9px]"
               style={{ transform: "translateZ(0.5px)" }}
             >
-              <div className="relative aspect-video overflow-hidden rounded-[10px] bg-black md:rounded-[14px]">
+              <div className="relative overflow-hidden rounded-[10px] bg-black md:rounded-[14px]" style={{ aspectRatio: mr }}>
                 {children}
                 <div className="pointer-events-none absolute inset-0" style={{ background: GLARE }} />
                 <motion.div className="pointer-events-none absolute inset-0" style={{ background: glare, mixBlendMode: "screen" }} />
@@ -250,12 +294,13 @@ function Device({ type, flip, children }) {
 function ProjectCard({ p, i, c, lang, t, active, muted }) {
   const title = tx(p.title, lang);
   const flip = i % 2 === 1; // odd slides: device on the right
+  const [ratio, setRatio] = useState(null); // real shape of the video / image, set once it loads
   return (
     <div className={`flex h-full flex-col items-center justify-center gap-5 md:flex-row md:gap-12 ${flip ? "md:flex-row-reverse" : ""}`}>
       {/* device (first in the markup: top on phones, left on desktop) */}
       <div className="flex w-full shrink-0 justify-center md:w-1/2">
-        <Device type={p.device || "monitor"} flip={flip}>
-          <Media p={p} title={title} active={active} muted={muted} t={t} />
+        <Device type={p.device || "monitor"} flip={flip} ratio={ratio}>
+          <Media p={p} title={title} active={active} muted={muted} t={t} onRatio={setRatio} />
         </Device>
       </div>
 
@@ -360,7 +405,7 @@ export default function BookReader({ c, index, list, lang, start, anim, fromZoom
   return (
     <motion.div
       className="fixed inset-0 z-20 bg-bg text-ink"
-            initial={{ opacity: fromZoom ? 1 : 0 }}
+      initial={{ opacity: fromZoom ? 1 : 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: fromZoom ? [1, 1] : 0, transition: { duration: fromZoom ? 0.45 : anim ? 0.5 : 0 } }}
       transition={{ duration: anim ? 0.5 : 0 }}
