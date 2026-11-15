@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { RoundedBox, Environment } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 
 const LT = {
@@ -158,18 +158,16 @@ const DICE_PIPS = {
   6: [[-0.32, 0.35], [0.32, 0.35], [-0.32, 0], [0.32, 0], [-0.32, -0.35], [0.32, -0.35]],
 };
 
-/* Individual premium pip */
+const DICE_CAMERA = { position: [0, 0, 5.8], fov: 30 };
+const DICE_GL = { antialias: true, alpha: true, powerPreference: "high-performance" };
+const DICE_STYLE = { width: "100%", height: "100%" };
+
+/* Individual pip */
 function DicePip({ position }) {
   return (
-    <mesh position={position} castShadow>
-      <sphereGeometry args={[0.085, 32, 32]} />
-      <meshPhysicalMaterial
-        color="#11151d"
-        roughness={0.28}
-        metalness={0.04}
-        clearcoat={0.65}
-        clearcoatRoughness={0.18}
-      />
+    <mesh position={position}>
+      <sphereGeometry args={[0.085, 16, 16]} />
+      <meshStandardMaterial color="#11151d" roughness={0.35} metalness={0.05} />
     </mesh>
   );
 }
@@ -188,146 +186,91 @@ function DiceFace({ number, position, rotation }) {
   );
 }
 
-/* Physical dice cube */
+/* Physical dice cube: tumbles, bounces, settles on the exact face */
 function RealDice({ value, rolling }) {
   const ref = useRef(null);
+  const invalidate = useThree((s) => s.invalidate);
   const elapsed = useRef(0);
-  const start = useRef([0, 0, 0]);
-  const finished = useRef(true);
-
-  const duration = 0.82;
+  const from = useRef([0, 0, 0]);
+  const to = useRef([0, 0, 0]);
+  const running = useRef(false);
+  const duration = 0.95;
 
   useEffect(() => {
     if (!rolling || !ref.current) return;
-
-    elapsed.current = 0;
-    finished.current = false;
-
-    start.current = [
-      Math.random() * Math.PI * 2,
-      Math.random() * Math.PI * 2,
-      Math.random() * Math.PI * 2,
-    ];
-
-    ref.current.rotation.set(...start.current);
-    ref.current.position.set(0, 0, 0);
-    ref.current.scale.set(1, 1, 1);
-  }, [rolling, value]);
-
-  useFrame((_, delta) => {
-    if (!ref.current || finished.current || !rolling) return;
-
-    elapsed.current += Math.min(delta, 0.05);
-
-    const t = Math.min(elapsed.current / duration, 1);
-
-    // Smooth cubic easing
-    const ease = t * t * (3 - 2 * t);
-
+    const r = ref.current.rotation;
     const target = DICE_FACE_ROTATIONS[value] || DICE_FACE_ROTATIONS[1];
+    from.current = [r.x, r.y, r.z]; // start from where it is now, no jump
+    to.current = [target[0] + Math.PI * 6, target[1] - Math.PI * 8, target[2] + Math.PI * 4];
+    elapsed.current = 0;
+    running.current = true;
+    invalidate();
+  }, [rolling, value, invalidate]);
 
-    // Several complete physical rotations, followed by an exact landing
-    const turns = [
-      Math.PI * 6,
-      -Math.PI * 8,
-      Math.PI * 4,
-    ];
+  useFrame((state, delta) => {
+    const m = ref.current;
+    if (!m || !running.current) return;
 
-    ref.current.rotation.set(
-      start.current[0] + (target[0] + turns[0] - start.current[0]) * ease,
-      start.current[1] + (target[1] + turns[1] - start.current[1]) * ease,
-      start.current[2] + (target[2] + turns[2] - start.current[2]) * ease
+    elapsed.current += Math.min(delta, 0.04);
+    const t = Math.min(elapsed.current / duration, 1);
+    const ease = 1 - Math.pow(1 - t, 3); // fast spin, slows down smoothly
+
+    const f = from.current, e = to.current;
+    m.rotation.set(
+      f[0] + (e[0] - f[0]) * ease,
+      f[1] + (e[1] - f[1]) * ease,
+      f[2] + (e[2] - f[2]) * ease
     );
 
-    // Natural jumping and landing
-    const bounce = Math.sin(t * Math.PI);
-    ref.current.position.y = bounce * 0.36;
-
-    // Very subtle landing compression
-    const squash = 1 - bounce * 0.045;
-    ref.current.scale.set(squash, 1 + bounce * 0.06, squash);
+    // bounces that get smaller, like a real dice landing
+    const hop = Math.abs(Math.sin(t * Math.PI * 2.6)) * Math.pow(1 - t, 1.4) * 0.55;
+    m.position.y = hop;
+    const sq = Math.max(0, 0.05 - hop) * 1.5; // squash on touching the ground
+    m.scale.set(1 + sq, 1 - sq, 1 + sq);
 
     if (t >= 1) {
-      // Exact final orientation: result faces the player
-      ref.current.rotation.set(...target);
-      ref.current.position.set(0, 0, 0);
-      ref.current.scale.set(1, 1, 1);
-      finished.current = true;
+      const target = DICE_FACE_ROTATIONS[value] || DICE_FACE_ROTATIONS[1];
+      m.rotation.set(target[0], target[1], target[2]);
+      m.position.set(0, 0, 0);
+      m.scale.set(1, 1, 1);
+      running.current = false;
+      return;
     }
+    state.invalidate();
   });
 
   return (
     <group ref={ref}>
-      <RoundedBox
-        args={[1.65, 1.65, 1.65]}
-        radius={0.19}
-        smoothness={8}
-        castShadow
-        receiveShadow
-      >
-        <meshPhysicalMaterial
-          color="#ffffff"
-          roughness={0.22}
-          metalness={0.015}
-          clearcoat={1}
-          clearcoatRoughness={0.08}
-          reflectivity={0.85}
-        />
+      <RoundedBox args={[1.65, 1.65, 1.65]} radius={0.19} smoothness={4}>
+        <meshStandardMaterial color="#ffffff" roughness={0.3} metalness={0.02} />
       </RoundedBox>
 
-      {/* Front: 1 */}
       <DiceFace number={1} position={[0, 0, 0.831]} rotation={[0, 0, 0]} />
-
-      {/* Back: 6 */}
       <DiceFace number={6} position={[0, 0, -0.831]} rotation={[0, Math.PI, 0]} />
-
-      {/* Right: 2 */}
       <DiceFace number={2} position={[0.831, 0, 0]} rotation={[0, Math.PI / 2, 0]} />
-
-      {/* Left: 5 */}
       <DiceFace number={5} position={[-0.831, 0, 0]} rotation={[0, -Math.PI / 2, 0]} />
-
-      {/* Top: 3 */}
       <DiceFace number={3} position={[0, 0.831, 0]} rotation={[-Math.PI / 2, 0, 0]} />
-
-      {/* Bottom: 4 */}
       <DiceFace number={4} position={[0, -0.831, 0]} rotation={[Math.PI / 2, 0, 0]} />
     </group>
   );
 }
 
-/* 3D lighting and camera */
+/* 3D lighting and camera (no Environment, no shadows, renders only while rolling) */
 function DiceScene({ value, rolling }) {
   return (
-    <Canvas
-      camera={{ position: [0, 0, 5.2], fov: 30 }}
-      dpr={[1, 2]}
-      gl={{
-        antialias: true,
-        alpha: true,
-        powerPreference: "high-performance",
-      }}
-      shadows
-      style={{ width: "100%", height: "100%" }}
-    >
-      <ambientLight intensity={0.85} />
-
-      <directionalLight
-        position={[3, 5, 5]}
-        intensity={3}
-        castShadow
-      />
-
-      <directionalLight position={[-4, 2, 3]} intensity={1.8} />
-      <pointLight position={[0, 4, 2]} intensity={1.5} />
-      <pointLight position={[0, -3, 3]} intensity={0.5} />
-
-      <Environment preset="studio" />
-
+    <Canvas camera={DICE_CAMERA} dpr={[1, 1.75]} gl={DICE_GL} frameloop="demand" style={DICE_STYLE}>
+      <ambientLight intensity={1.0} />
+      <directionalLight position={[3, 5, 5]} intensity={2.6} />
+      <directionalLight position={[-4, 2, 3]} intensity={1.4} />
+      <pointLight position={[0, 0, 6]} intensity={1.0} />
       <RealDice value={value} rolling={rolling} />
     </Canvas>
   );
 }
+
+
+
+
 
 /* Premium dice component */
 function Die({
@@ -395,7 +338,9 @@ function Die({
           `,
         }}
       >
-        <DiceScene value={v} rolling={rolling} />
+                <div style={{ position: "absolute", inset: "-30%", pointerEvents: "none" }}>
+          <DiceScene value={v} rolling={rolling} />
+        </div>
       </div>
 
       {/* Rolling indicator */}
@@ -453,7 +398,7 @@ function Pin({ color }) {
   return (
     <svg
       viewBox="0 0 60 80" width="100%" height="100%"
-      style={{ display: "block", overflow: "visible", filter: "drop-shadow(0 2px 2px rgba(0,0,0,.38))" }}
+      style={{ display: "block", overflow: "visible", }}
     >
       <defs>
         <radialGradient id={`${uid}h`} cx=".36" cy=".3" r=".8">
@@ -1157,7 +1102,7 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
                           <motion.div
                             animate={pick ? { y: [0, -cell * 0.16, 0] } : hop ? { y: [0, -cell * 0.5 - (hop % 2) * 0.02, 0] } : { y: 0 }}
                             transition={pick ? { repeat: Infinity, duration: 0.85, ease: "easeInOut" } : hop ? { duration: 0.2, ease: "easeOut" } : { duration: 0.2 }}
-                            style={{ width: "100%", height: "100%", transformOrigin: "50% 100%", filter: pick ? `drop-shadow(0 0 7px ${c}) drop-shadow(0 0 2px #fff)` : "drop-shadow(0 1px 1.5px rgba(0,0,0,.5))" }}
+                            style={{ width: "100%", height: "100%", transformOrigin: "50% 100%", filter: pick ? `drop-shadow(0 0 7px ${c}) drop-shadow(0 0 2px #fff)` : "none" }}
                           >
                             <Pin s={t.s} color={c} />
                           </motion.div>
