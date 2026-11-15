@@ -42,6 +42,7 @@ const WOOD_LIGHT = "linear-gradient(145deg,#f1e1b6,#d3bb86)";
 const WOOD_DARK = "linear-gradient(145deg,#7b5531,#51361e)";
 const SEL_COLOR = "rgba(255,235,59,.55)";
 const LAST_COLOR = "rgba(255,235,59,.38)";
+const HINT_COLOR = "rgba(0,200,255,.5)";
 
 /* ---------------- the chess rules ---------------- */
 const FILES = "abcdefgh";
@@ -562,6 +563,26 @@ function ChessDefs() {
   );
 }
 
+/* ---------------- moves in words (like chess.com) ---------------- */
+const PN = { K: "King", Q: "Queen", R: "Rook", B: "Bishop", N: "Knight", P: "Pawn" };
+function moveWords(st, m, pt) {
+  const p = st.b[m.fr][m.fc];
+  const ns = applyChess(st, m, pt || "Q");
+  const opp = p.s === 1 ? 2 : 1;
+  const s1 = { b: ns.b, cast: ns.cast, ep: ns.ep };
+  const chk = inCheck(s1, opp);
+  const mate = chk && !legalFor(s1, opp).length;
+  let w;
+  if (m.castle) w = m.castle === "k" ? "Castles kingside" : "Castles queenside";
+  else {
+    const tgt = st.b[m.tr][m.tc];
+    const cap = m.ep ? "P" : tgt && tgt.t;
+    w = m.cap && cap ? `${PN[p.t]} takes ${PN[cap]} on ${sq(m.tr, m.tc)}` : `${PN[p.t]} to ${sq(m.tr, m.tc)}`;
+    if (m.promo) w += ` and promotes to ${PN[pt || "Q"]}`;
+  }
+  return w + (mate ? ", checkmate!" : chk ? ", check" : "");
+}
+
 /* ---------------- the game ---------------- */
  export default function ChessGame({ kit, ui, lang, S, role, names, level, side, net, onFinish, lc, opt: optIn }) {
   const opt = optIn || {};
@@ -587,6 +608,11 @@ function ChessDefs() {
   const [ask, setAsk] = useState(null);
     const [auto, setAuto] = useState(!!opt.autoFlip);
   const [think, setThink] = useState(false);
+    const [hint, setHint] = useState(null);
+  const [hinting, setHinting] = useState(false);
+  const [log, setLog] = useState([]);
+  const tl = useRef([]); // timeline of positions for back / forward
+  const ptr = useRef(0);
   const alive = useRef(true);
   const fn = useRef({});
   const hist = useRef(null);
@@ -615,26 +641,60 @@ function ChessDefs() {
     setRes(wnr); setTurn(0); setSel(null);
     setTimeout(() => { if (alive.current) onFinish(wnr); }, 1800);
   };
-  const doMove = (m, who, fromNet, pt) => {
+    const doMove = (m, who, fromNet, pt) => {
     const mover = grid[m.fr][m.fc];
     const moverId = (pcs.find((x) => x.r === m.fr && x.c === m.fc) || {}).id;
+    const words = moveWords(S0, m, pt);
     const ns = applyChess(S0, m, pt);
-    setPcs(listApply(pcs, m, pt));
-    setMeta({ cast: ns.cast, ep: ns.ep, half: ns.half });
-    setSel(null); setAsk(null);
+    const npcs = listApply(pcs, m, pt);
+    const nmeta = { cast: ns.cast, ep: ns.ep, half: ns.half };
     const opp = who === 1 ? 2 : 1;
     const s1 = { b: ns.b, cast: ns.cast, ep: ns.ep };
     const oppMoves = legalFor(s1, opp);
     const chk = inCheck(s1, opp);
-    setLast({ who, m, id: moverId, piece: mover.t, pt: m.promo ? pt || "Q" : null, chk: chk && oppMoves.length > 0, k: Math.random() });
+    const nlast = { who, m, id: moverId, piece: mover.t, pt: m.promo ? pt || "Q" : null, chk: chk && oppMoves.length > 0, k: Math.random(), words };
+    const key = posKey(ns.b, opp, ns.cast, ns.ep);
+    const nlog = [...log, words];
+    // remember this position so Back / Forward can return to it
+    if (!tl.current.length) tl.current.push({ pcs, meta, turn, last, hist: hist.current.slice(), log });
+    tl.current = tl.current.slice(0, ptr.current + 1); // a different move cancels Forward
+    tl.current.push({ pcs: npcs, meta: nmeta, turn: opp, last: nlast, hist: [...hist.current, key], log: nlog });
+    ptr.current = tl.current.length - 1;
+    setPcs(npcs);
+    setMeta(nmeta);
+    setLog(nlog);
+    setSel(null); setAsk(null); setHint(null);
+    setLast(nlast);
     if (online && !fromNet) net.send({ t: "ch", m: { fr: m.fr, fc: m.fc, tr: m.tr, tc: m.tc, pt: pt || null } });
     if (!oppMoves.length) { setWhy(chk ? "mate" : "stale"); finish(chk ? (who === hs ? "host" : "guest") : "draw"); return; }
-        if (opt.fifty !== false && ns.half >= 100) { setWhy("fifty"); finish("draw"); return; }
+    if (opt.fifty !== false && ns.half >= 100) { setWhy("fifty"); finish("draw"); return; }
     if (insufficient(ns.b)) { setWhy("material"); finish("draw"); return; }
-    const key = posKey(ns.b, opp, ns.cast, ns.ep);
     hist.current.push(key);
-        if (opt.repetition !== false && hist.current.filter((x) => x === key).length >= 3) { setWhy("rep"); finish("draw"); return; }
+    if (opt.repetition !== false && hist.current.filter((x) => x === key).length >= 3) { setWhy("rep"); finish("draw"); return; }
     setTurn(opp);
+  };
+
+  /* ----- back / forward / hint ----- */
+  const goTo = (i) => {
+    const s = tl.current[i];
+    if (!s) return;
+    ptr.current = i;
+    setPcs(s.pcs); setMeta(s.meta); setTurn(s.turn); setLast(s.last); setLog(s.log);
+    hist.current = s.hist.slice();
+    setSel(null); setAsk(null); setHint(null);
+  };
+  // vs computer: go back / forward to the last position where it was YOUR turn
+  const backTo = () => { for (let i = ptr.current - 1; i >= 0; i--) if (local || tl.current[i].turn === myP) return i; return -1; };
+  const fwdTo = () => { for (let i = ptr.current + 1; i < tl.current.length; i++) if (local || tl.current[i].turn === myP) return i; return -1; };
+  const getHint = () => {
+    if (!cpu || !canAct || hinting) return;
+    setHinting(true);
+    setTimeout(() => {
+      if (!alive.current) return;
+      const m = chessMove(S0, myP, "hard", hist.current, { ms: 1200, depth: 6, blunder: 0 });
+      setHinting(false);
+      if (m) { setSel(null); setHint({ m, words: moveWords(S0, m, "Q") }); }
+    }, 40);
   };
   // the friend's move is only accepted if it really is legal for them right now
   fn.current.net = (m) => {
@@ -693,10 +753,12 @@ function ChessDefs() {
   const turnColor = res || !turn ? GC : colorOf(turn);
   const kingSq = checked ? findKing(grid, turn) : null;
   const GLY = { K: "♚", Q: "♛", R: "♜", B: "♝", N: "♞", P: "♟" };
-  const lastTxt = last
-    ? `${GLY[last.piece]}︎ ${sq(last.m.fr, last.m.fc)} → ${sq(last.m.tr, last.m.tc)}${last.m.cap ? " ✕" : ""}${last.m.castle ? (last.m.castle === "k" ? " · O-O" : " · O-O-O") : ""}${last.pt ? ` · ${GLY[last.pt]}︎` : ""}${last.chk ? " +" : ""}`
-    : "";
+    const lastTxt = last ? last.words || "" : "";
   const lab = Math.max(9, Math.round(cell * 0.2));
+    const idle = !res && !waiting && !ask && !hinting && turn !== 0 && (local || turn === myP);
+  const canBack = idle && backTo() >= 0;
+  const canFwd = idle && fwdTo() >= 0;
+  const btn = (on) => ({ color: "#efe8d6", opacity: on ? 1 : 0.4, ...kit.chipStyle });
 
   return (
     <div className="flex w-full flex-col items-center">
@@ -717,6 +779,13 @@ function ChessDefs() {
             ) : null}
           </AnimatePresence>
         </div>
+                {hint && (
+          <div className="mb-1 flex justify-center">
+            <motion.p initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="rounded-full px-4 py-1 text-[12px] font-bold" style={{ background: "rgba(0,200,255,.18)", color: "#a8ecff", boxShadow: "inset 0 0 0 1px rgba(0,200,255,.7)" }}>
+              💡 {hint.words}
+            </motion.p>
+          </div>
+        )}
         <Warn w={wn} />
       </div>
 
@@ -741,9 +810,10 @@ function ChessDefs() {
                   const dest = destMap[key];
                   const isSel = sel && sel[0] === r && sel[1] === c;
                   const isLast = last && ((last.m.fr === r && last.m.fc === c) || (last.m.tr === r && last.m.tc === c));
+                                    const isHint = hint && ((hint.m.fr === r && hint.m.fc === c) || (hint.m.tr === r && hint.m.tc === c));
                   const bad = wn && wn.cell === key;
                   const kc = kingSq && kingSq[0] === r && kingSq[1] === c;
-                  const tint = bad ? "rgba(229,72,77,.6)" : kc ? "radial-gradient(circle, rgba(255,60,60,.95) 0%, rgba(229,72,77,.35) 65%, transparent 80%)" : isSel ? SEL_COLOR : isLast ? LAST_COLOR : null;
+                  const tint = bad ? "rgba(229,72,77,.6)" : kc ? "radial-gradient(circle, rgba(255,60,60,.95) 0%, rgba(229,72,77,.35) 65%, transparent 80%)" : isSel ? SEL_COLOR : isHint ? HINT_COLOR : isLast ? LAST_COLOR : null;
                   const txt = dark ? BOARD_LIGHT : BOARD_DARK;
                   return (
                     <div
@@ -880,13 +950,44 @@ function ChessDefs() {
         </div>
       </motion.div>
 
-      {local && (
-        <button
-          type="button" onClick={() => setAuto((a) => !a)}
-          className="mt-5 rounded-full px-4 py-1.5 text-[11px] font-semibold" style={{ color: "#efe8d6", ...kit.chipStyle }}
+           {(local || cpu) && (
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <button type="button" disabled={!canBack} onClick={() => goTo(backTo())} className="rounded-full px-4 py-1.5 text-[11px] font-semibold" style={btn(canBack)}>
+            ◀ Back
+          </button>
+          <button type="button" disabled={!canFwd} onClick={() => goTo(fwdTo())} className="rounded-full px-4 py-1.5 text-[11px] font-semibold" style={btn(canFwd)}>
+            Forward ▶
+          </button>
+          {cpu && (
+            <button type="button" disabled={!canAct || hinting} onClick={getHint} className="rounded-full px-4 py-1.5 text-[11px] font-semibold" style={btn(canAct && !hinting)}>
+              💡 {hinting ? "…" : "Hint"}
+            </button>
+          )}
+          {local && (
+            <button
+              type="button" onClick={() => setAuto((a) => !a)}
+              className="rounded-full px-4 py-1.5 text-[11px] font-semibold" style={{ color: "#efe8d6", ...kit.chipStyle }}
+            >
+              ⟳ {S.flip}: {auto ? S.on : S.off}
+            </button>
+          )}
+        </div>
+      )}
+
+      {log.length > 0 && (
+        <div
+          ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}
+          className="mt-3 max-h-24 w-full max-w-[460px] overflow-y-auto rounded-xl px-3 py-2 text-[11px]"
+          style={{ background: "rgba(255,255,255,.06)", color: "#efe8d6" }}
         >
-          ⟳ {S.flip}: {auto ? S.on : S.off}
-        </button>
+          {Array.from({ length: Math.ceil(log.length / 2) }).map((_, i) => (
+            <div key={i} className="flex gap-2">
+              <span className="w-5 opacity-60">{i + 1}.</span>
+              <span className="flex-1">{log[2 * i]}</span>
+              <span className="flex-1">{log[2 * i + 1] || ""}</span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
