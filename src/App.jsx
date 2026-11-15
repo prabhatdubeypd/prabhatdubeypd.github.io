@@ -16,9 +16,24 @@ import ChatBot from "./components/ChatBot";
 import ShareSite from "./components/ShareSite";
 import SiteExtras from "./components/SiteExtras";
 import Snippets from "./components/Snippets";
+import { useState } from "react";
+import LinkBio, { LinkGate, LinkAction, readRoute } from "./components/LinkBio";
 
 export default function App() {
-  const { loading, error } = useData();
+    const { loading, error } = useData();
+  const [route, setRoute] = useState(readRoute); // short links like /hire, and the /links page
+
+  // the link-in-bio page opens instantly, without waiting for the whole site
+  if (route && route.slug === "links") {
+    return (
+      <>
+        <LinkBio route={route} />
+        <HireModal />
+      </>
+    );
+  }
+  // any other short link (/hire, /call, /resume ...): count it, then redirect or open the site
+  if (route) return <LinkGate route={route} done={() => setRoute(null)} />;
 
   if (error) return <div className="p-10 text-red-600">Could not load data: {error}</div>;
 

@@ -63,9 +63,12 @@ self.addEventListener("fetch", (e) => {
   if (req.mode === "navigate") {
     e.respondWith(
       fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(SHELL).then((c) => c.put("/", copy));
+                .then((res) => {
+          // only keep a copy of the real home page (never the 404 redirect page)
+          if (res.ok && url.pathname === "/") {
+            const copy = res.clone();
+            caches.open(SHELL).then((c) => c.put("/", copy));
+          }
           return res;
         })
         .catch(() => caches.match("/"))

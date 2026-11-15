@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Opening…</title>
+    <script>
+      (function () {
+        var p = location.pathname.replace(/^\/+|\/+$/g, "");
+        // short names like /hire or /links become /?l=hire (the query part, like ?src=instagram, is kept)
+        if (/^[a-z0-9-]{1,32}$/i.test(p)) {
+          var q = location.search ? "&" + location.search.slice(1) : "";
+          location.replace("/?l=" + encodeURIComponent(p.toLowerCase()) + q + location.hash);
+        } else {
+          location.replace("/");
+        }
+      })();
+    </script>
+  </head>
+  <body style="margin:0;display:grid;place-items:center;min-height:100vh;background:#070504;color:#c9972f;font-family:system-ui,sans-serif">
+    <p>Opening…</p>
+    <noscript><a href="/" style="color:#f0cb62">Go to the site</a></noscript>
+  </body>
+</html>
