@@ -583,6 +583,140 @@ function moveWords(st, m, pt) {
   return w + (mate ? ", checkmate!" : chk ? ", check" : "");
 }
 
+/* ---------------- computer sledging (trash talk) ---------------- */
+/* ---------------- computer sledging (trash talk) ---------------- */
+const PNH = { K: "राजा", Q: "वज़ीर", R: "हाथी", B: "ऊँट", N: "घोड़ा", P: "प्यादा" };
+const SL = {
+  en: {
+    aiCap: ["Thanks for the free {p}!", "Your {p} just left the chat.", "Yum. {p} for lunch.", "I'll take that {p}, thank you.", "Another {p} down. Are you even trying?", "Donation accepted: one {p}.", "That {p} had a family, you know. Kidding. Not really.", "Delicious {p}. Got any more?", "Your {p} was in my way. Not anymore."],
+    aiCheck: ["Check! Run, king, run!", "Your king looks nervous.", "Knock knock. Check.", "Sweating yet? Check.", "Your king has nowhere to hide for long.", "Check. Try not to cry.", "Boo! Check."],
+    aiMate: ["Checkmate! Better luck next time.", "GG. That was easy.", "Checkmate. Go practise and come back.", "Game over. I barely woke up.", "Checkmate! Want me to explain how you lost?"],
+    aiCastle: ["King safe, tea time.", "Castled. Come and get me.", "My king is cosy. Yours? Not so much.", "Safety first. Unlike your strategy."],
+    aiPromo: ["A new queen is born!", "Look who got promoted! Unlike you.", "Second queen? You should be worried.", "Promotion! Your pawns can only dream."],
+    aiQuiet: ["Calculated.", "Your move. Try not to blunder.", "Is that all you've got?", "I've seen better moves at a tea stall.", "Tick tock, I'm waiting.", "I'm playing with one eye closed.", "This is too easy. Wake me when it gets hard.", "You're making this boring.", "Are you playing or just touching pieces?", "Even my random mode plays better.", "I've already planned your defeat.", "Keep going. I'm enjoying this.", "Think harder. It won't help, but try.", "Smooth. Like your loss will be.", "Is your hand shaking?"],
+    userBlunder: ["Oops! Did you mean to do that?", "My grandma plays better.", "Hanging pieces now? Generous.", "That piece looked lonely, I'll fix that.", "Wow. Just wow. A masterpiece of blunders.", "Free {p}? You shouldn't have.", "Did your cat walk on the screen?", "That was the worst move I've seen today. And it's still early.", "Brave. Stupid, but brave.", "You just gave me a gift. Thank you.", "Resign now and save us both time."],
+    userGood: ["Hmm, not bad.", "Lucky move!", "Okay, you got me there.", "Beginner's luck?", "Don't get cocky.", "One good move doesn't make a player.", "Fine, I'll give you that one.", "Who taught you that? Not you, surely.", "Even a broken clock is right twice a day."],
+    usedHint: ["Using the hint, huh? 😏", "That move smells like a hint.", "Hint button doing the hard work!", "Your brain called the hint button for help.", "Nice move. Whose is it, yours or the hint's?", "Cheating with hints won't save you.", "Let the hint play the whole game then."],
+    userCap: ["Ouch, my {p}!", "Enjoy it while it lasts.", "That {p} was just a decoy.", "Take it. I have plenty.", "You took a {p}. I'll take your dignity.", "A small win. Don't celebrate yet.", "Fine, keep the {p}. I'll take the game."],
+    userCheck: ["Check? I'm not scared.", "Cute. I'll escape.", "Is that supposed to scare me?", "Nice try, little one.", "Check? Seen it a thousand times.", "You poked the bear. Bad idea."],
+    userQuiet: ["Interesting...", "Is that your plan?", "Bold move.", "I'm still winning, you know.", "That's it? That's the move?", "Are you sleeping or thinking?", "I can hear your brain buffering.", "Take your time. You'll need it.", "Hmm. I've seen toddlers play sharper.", "That move did nothing. Congratulations.", "You call that strategy?", "I'm not even trying yet.", "Boring. Do something!", "You're just delaying the inevitable."],
+    userMate: ["Wow... you beat me. Rematch?", "Checkmate?! I demand a recount.", "I let you win. Obviously.", "Impossible! I was distracted.", "Okay, that hurt. Rematch. Now."],
+  },
+  hi: {
+    aiCap: ["{p} के लिए शुक्रिया, मुफ़्त में दे दिया!", "तेरा {p} तो गया!", "वाह, {p} का लंच हो गया।", "{p} मैं ले लेता हूँ, धन्यवाद।", "एक और {p} कम। खेल भी रहा है या सिर्फ़ देख रहा है?", "दान स्वीकार: एक {p}।", "तेरा {p} मेरे रास्ते में था। अब नहीं है।", "स्वादिष्ट {p}। और है क्या?"],
+    aiCheck: ["शह! भाग राजा, भाग!", "तेरा राजा घबरा रहा है।", "खट खट। शह।", "पसीना आया? शह।", "तेरे राजा के पास छुपने की जगह नहीं।", "शह। रोना मत।", "भू! शह।"],
+    aiMate: ["शह और मात! अगली बार किस्मत आज़माना।", "GG। बहुत आसान था।", "मात। जा, प्रैक्टिस कर और लौट।", "खेल ख़त्म। मैं तो अभी उठा ही था।", "मात! बताऊँ तू कैसे हारा?"],
+    aiCastle: ["राजा सुरक्षित, अब चाय का टाइम।", "कैसलिंग हो गई। हिम्मत है तो आ।", "मेरा राजा आराम में है। तेरा? नहीं।", "पहले सुरक्षा। तेरी रणनीति की तरह नहीं।"],
+    aiPromo: ["नई वज़ीर का जन्म हुआ!", "देख, प्रमोशन मिला! तुझे कभी नहीं मिलेगा।", "दूसरी वज़ीर? अब डर।", "प्रमोशन! तेरे प्यादे तो बस सपने देखते हैं।"],
+    aiQuiet: ["सोच-समझकर चली है।", "तेरी बारी। गलती मत करना।", "बस इतना ही है तेरे पास?", "इससे अच्छी चालें तो चाय की टपरी पर देखी हैं।", "टिक टिक, मैं इंतज़ार कर रहा हूँ।", "मैं तो एक आँख बंद करके खेल रहा हूँ।", "ये तो बहुत आसान है। मुश्किल हो तो जगाना।", "तू खेल को बोरिंग बना रहा है।", "तू खेल रहा है या बस मोहरे छू रहा है?", "मेरा रैंडम मोड भी तुझसे अच्छा खेलता है।", "तेरी हार की योजना मैंने पहले ही बना ली है।", "चलता रह, मुझे मज़ा आ रहा है।", "और सोच ले। फ़ायदा नहीं होगा, पर कोशिश कर।", "हाथ काँप रहा है क्या?", "तेरी हार जितनी ही स्मूद चाल।"],
+    userBlunder: ["अरे! जानबूझकर किया क्या?", "मेरी दादी तुझसे अच्छा खेलती है।", "मोहरे लुटा रहा है? दानवीर है तू।", "वाह वाह! गलतियों का महाकाव्य।", "{p} मुफ़्त में? इसकी क्या ज़रूरत थी।", "स्क्रीन पर बिल्ली चल गई क्या?", "आज की सबसे बुरी चाल। और अभी दिन बाकी है।", "हिम्मत थी। बेवकूफ़ी भी, पर हिम्मत।", "तूने मुझे तोहफ़ा दिया। शुक्रिया।", "अभी हार मान ले, दोनों का टाइम बचेगा।"],
+    userGood: ["हम्म, बुरा नहीं।", "तुक्का लग गया!", "ठीक है, ये चाल मान गया।", "बिगिनर्स लक?", "ज़्यादा उड़ मत।", "एक अच्छी चाल से खिलाड़ी नहीं बनते।", "चल, ये तुझे दे दी।", "ये किसने सिखाया? तूने तो नहीं सोचा होगा।", "बंद घड़ी भी दिन में दो बार सही होती है।"],
+    usedHint: ["हिंट लगाया ना? 😏", "इस चाल से हिंट की खुशबू आ रही है।", "हिंट बटन ने मेहनत की है!", "दिमाग ने हिंट बटन को मदद के लिए बुलाया।", "अच्छी चाल। तेरी है या हिंट की?", "हिंट से भी नहीं बचेगा तू।", "पूरा खेल हिंट को ही खेलने दे फिर।"],
+    userCap: ["आउच, मेरा {p}!", "जब तक है, मज़े कर ले।", "वो {p} तो बस दिखावा था।", "ले जा, मेरे पास बहुत हैं।", "तूने {p} लिया, मैं तेरा घमंड लूँगा।", "छोटी जीत है। अभी जश्न मत मना।", "रख ले {p}, खेल मैं ले लूँगा।"],
+    userCheck: ["शह? मैं नहीं डरता।", "क्यूट। मैं बच निकलूँगा।", "इससे मुझे डराएगा?", "अच्छी कोशिश, छोटू।", "शह? हज़ार बार देखी है।", "शेर को छेड़ दिया तूने। बुरा आइडिया।"],
+    userQuiet: ["दिलचस्प...", "यही तेरा प्लान है?", "हिम्मती चाल।", "मैं अब भी जीत रहा हूँ, जानता है ना?", "बस? यही चाल थी?", "सो रहा है या सोच रहा है?", "तेरा दिमाग़ बफ़र होता सुनाई दे रहा है।", "आराम से सोच। तुझे ज़रूरत पड़ेगी।", "हम्म। छोटे बच्चे भी इससे तेज़ खेलते हैं।", "इस चाल से कुछ नहीं हुआ। बधाई हो।", "इसे रणनीति कहता है?", "मैंने अभी कोशिश ही कहाँ की है।", "बोरिंग। कुछ तो कर!", "तू बस अपनी हार टाल रहा है।"],
+    userMate: ["वाह... तूने हरा दिया। रीमैच?", "मात?! दोबारा गिनती करवाओ।", "मैंने जानबूझकर जिताया। ज़ाहिर है।", "नामुमकिन! मेरा ध्यान भटका था।", "ठीक है, चोट लगी। रीमैच। अभी।"],
+  },
+};
+SL.en.userBlunder.push(
+  "I've seen better moves from a screensaver.", "Is the board upside down for you?", "That move was so bad, the pieces filed a complaint.",
+  "Your {p} is hanging. So is your reputation.", "Did you lose a bet? Because that move says yes.", "I'd say think before moving, but there's nothing to think with.",
+  "That wasn't a move, that was a cry for help.", "Even autocorrect wouldn't save that.", "Chess is hard, but you're making it look impossible.",
+  "Wow, you're setting records. For the wrong thing.", "My calculator just laughed. I didn't know it could.", "You play like you read the rules once, in a dream.",
+  "Did you move with your eyes closed? Be honest.", "I'm not mad, I'm just impressed by how bad that was.", "That's the chess equivalent of walking into a glass door."
+);
+SL.en.userHuge = [
+  "You just hung your {p}. On purpose? Please say yes.", "Your {p}?! Did you sneeze on the mouse?", "That's not a blunder, that's a crime scene.",
+  "Free {p}! Who raised you, Santa?", "I've seen people lose pieces, but you gift-wrap them.", "Hold on, let me frame this. Worst move of the century.",
+  "Delete the app. Take a walk. Rethink your life.", "I'd clap, but I'm too busy laughing.", "You played that with confidence. That makes it worse.",
+  "Your {p} is gone and so is your hope.", "Somewhere, a chess teacher just felt a chill.", "Resign. Not for the game. For your own dignity."
+];
+SL.hi.userBlunder.push(
+  "इससे अच्छी चाल तो स्क्रीनसेवर चल लेता है।", "बोर्ड उल्टा पकड़ रखा है क्या?", "इस चाल पर तो मोहरों ने शिकायत दर्ज कर दी।",
+  "तेरा {p} लटका है, और तेरी इज़्ज़त भी।", "शर्त हार गया क्या? चाल तो यही कह रही है।", "सोच के चलने को कहता, पर सोचने को कुछ है ही नहीं।",
+  "ये चाल नहीं थी, मदद की गुहार थी।", "ऑटोकरेक्ट भी इसे नहीं बचा पाता।", "शतरंज मुश्किल है, पर तू उसे नामुमकिन बना रहा है।",
+  "रिकॉर्ड बना रहा है। गलत चीज़ का।", "मेरे कैलकुलेटर को हँसी आ गई।", "लगता है नियम एक बार सपने में पढ़े थे।",
+  "आँख बंद करके चली क्या? सच बता।", "गुस्सा नहीं हूँ, बस इतनी बुरी चाल देखकर प्रभावित हूँ।", "ये तो शीशे के दरवाज़े से टकराने जैसी चाल थी।"
+);
+SL.hi.userHuge = [
+  "तूने {p} लटका दिया। जानबूझकर? प्लीज़ हाँ बोल।", "{p}?! माउस पर छींक आ गई क्या?", "ये गलती नहीं, अपराध स्थल है।",
+  "मुफ़्त {p}! तू सांता है क्या?", "लोग मोहरे हारते हैं, तू तो गिफ़्ट पैक करके देता है।", "रुक, इसे फ्रेम करवाता हूँ। सदी की सबसे बुरी चाल।",
+  "ऐप डिलीट कर दे। थोड़ा टहल आ। ज़िंदगी पर दोबारा सोच।", "ताली बजाता, पर हँसने से फ़ुर्सत नहीं।", "ये चाल तूने पूरे आत्मविश्वास से चली। इससे और बुरा लगता है।",
+  "तेरा {p} गया और उम्मीद भी।", "कहीं कोई शतरंज टीचर के रोंगटे खड़े हो गए।", "हार मान ले। खेल के लिए नहीं, अपनी इज़्ज़त के लिए।"
+];
+SL.en.userQuiet.push(
+  "I've seen snails with better plans.", "That move had the energy of a Monday morning.", "Are you playing chess or just rearranging furniture?",
+  "Even the pawns are embarrassed for you.", "Keep going, this is better than TV."
+);
+SL.hi.userQuiet.push(
+  "घोंघे भी तुझसे बेहतर प्लान बनाते हैं।", "इस चाल में सोमवार सुबह वाली एनर्जी थी।", "शतरंज खेल रहा है या फ़र्नीचर सजा रहा है?",
+  "प्यादे भी तेरे लिए शर्मिंदा हैं।", "चलता रह, टीवी से ज़्यादा मज़ा आ रहा है।"
+);
+SL.en.userBlunder.push(
+  "That move has the same energy as texting your ex.", "I'd explain what you did wrong, but we'd be here all night.", "Your {p} just wrote its resignation letter.",
+  "If bad moves were currency, you'd be a billionaire.", "I've seen better decisions at a buffet.", "That was so bad, the board is blushing.",
+  "Congratulations, you've invented a new way to lose.", "Did a pigeon make that move for you?", "You're the reason chess has a 'resign' button.",
+  "Ctrl+Z won't save you. Neither will prayer.", "Honestly, I'm learning from your mistakes. Mostly what not to do.", "That move will be taught in schools. As a warning.",
+  "You hang pieces like laundry.", "Your plan: lose slowly. Your execution: perfect.", "Even my grandmother's cat plays sharper than that."
+);
+SL.en.userHuge.push(
+  "A {p}?! That's not a sacrifice, that's a surrender.", "I'm calling a chess doctor. You need help.", "My circuits are laughing so hard they're overheating.",
+  "You didn't blunder. You performed a magic trick: now you see your {p}, now you don't.", "That's it. I'm telling everyone about this move.", "Pack it up. The game ended the moment you touched that {p}.",
+  "I want that move framed in my living room.", "Tell your family you tried.", "Take a bow. That's a historic disaster.", "Your {p} is in a better place now."
+);
+SL.en.userQuiet.push(
+  "Slow and pointless. Impressive.", "I've seen potatoes with better chess instincts.", "Did you just make a move or sneeze?",
+  "I'm falling asleep over here.", "That move had no ambition.", "Your strategy is a mystery, even to you.",
+  "Is this chess or a hostage situation?", "You play like Wi-Fi in a lift. Weak and disconnected."
+);
+SL.en.userStreak = [
+  "Another one?! Are you doing this on purpose?", "Blunder after blunder. You're consistent, I'll give you that.", "It's a streak! Don't stop now, I'm enjoying this.",
+  "You're not losing, you're donating. Regularly.", "Two bad moves in a row. Is this a performance?", "I should charge you for the entertainment.",
+  "Your pieces are begging you to stop.", "Do you have a plan or just chaos?", "The pieces are asking for a new owner.", "At this rate I'll win without trying. Oh wait, I already am."
+];
+SL.en.userLosing = [
+  "You're so far behind, you can't even see me.", "This isn't a game anymore, it's a tribute to your defeat.", "Resign now and I'll tell people it was close.",
+  "You're losing so badly I feel guilty. Almost.", "The result is clear. Only your hope is delaying it.", "Should I play with one hand to make it fair?",
+  "Don't worry, losing builds character. You'll have loads.", "I'd offer a draw, but I respect myself."
+];
+SL.hi.userBlunder.push(
+  "इस चाल में वही एनर्जी थी जो एक्स को मैसेज करने में होती है।", "बताता कि क्या ग़लत किया, पर पूरी रात लग जाएगी।", "तेरे {p} ने इस्तीफ़ा लिख दिया।",
+  "ख़राब चालें करेंसी होतीं, तो तू अरबपति होता।", "इससे अच्छे फ़ैसले तो बुफ़े में लोग लेते हैं।", "इतनी बुरी चाल कि बोर्ड भी शरमा गया।",
+  "बधाई हो, तूने हारने का नया तरीक़ा खोज लिया।", "ये चाल कबूतर ने चली क्या?", "शतरंज में 'रिज़ाइन' बटन तेरी वजह से है।",
+  "Ctrl+Z भी नहीं बचाएगा, दुआ भी नहीं।", "सच कहूँ तो तेरी ग़लतियों से सीख रहा हूँ। कि क्या नहीं करना है।", "ये चाल स्कूलों में पढ़ाई जाएगी। चेतावनी के तौर पर।",
+  "तू मोहरे ऐसे लटकाता है जैसे कपड़े सुखाता हो।", "तेरा प्लान: धीरे-धीरे हारना। अमल: एकदम परफ़ेक्ट।", "मेरी दादी की बिल्ली भी इससे तेज़ खेलती है।"
+);
+SL.hi.userHuge.push(
+  "{p}?! ये बलिदान नहीं, आत्मसमर्पण है।", "मैं शतरंज के डॉक्टर को बुला रहा हूँ। तुझे मदद चाहिए।", "मेरे सर्किट इतना हँसे कि गरम हो गए।",
+  "ये ग़लती नहीं, जादू था: अभी {p} था, अभी नहीं है।", "बस, मैं सबको ये चाल बताऊँगा।", "समेट ले सब। जिस पल {p} छुआ, उसी पल खेल ख़त्म।",
+  "इस चाल को मैं अपने ड्रॉइंग रूम में फ्रेम करवाऊँगा।", "घरवालों से बोल देना कि कोशिश की थी।", "झुककर सलाम कर। ऐतिहासिक तबाही है।", "तेरा {p} अब बेहतर जगह पर है।"
+);
+SL.hi.userQuiet.push(
+  "धीमी और बेमतलब। प्रभावशाली।", "आलू में भी इससे अच्छी शतरंज की समझ होती है।", "चाल चली या छींक आई?",
+  "मुझे यहाँ नींद आ रही है।", "इस चाल में कोई महत्वाकांक्षा नहीं थी।", "तेरी रणनीति तुझे भी नहीं पता।",
+  "ये शतरंज है या बंधक संकट?", "तू लिफ़्ट के वाई-फ़ाई जैसा खेलता है। कमज़ोर और डिस्कनेक्ट।"
+);
+SL.hi.userStreak = [
+  "एक और?! जानबूझकर कर रहा है क्या?", "गलती पर गलती। एक चीज़ में तो पक्का है तू।", "सिलसिला चल पड़ा! रुकना मत, मज़ा आ रहा है।",
+  "तू हार नहीं रहा, दान कर रहा है। नियमित रूप से।", "लगातार दो बुरी चालें। ये परफ़ॉर्मेंस है क्या?", "मनोरंजन का पैसा तुझसे लेना चाहिए।",
+  "तेरे मोहरे तुझसे रुकने की भीख माँग रहे हैं।", "प्लान है या सिर्फ़ अफ़रा-तफ़री?", "मोहरे नया मालिक माँग रहे हैं।", "इस रफ़्तार से मैं बिना कोशिश जीत जाऊँगा। अरे, जीत तो रहा ही हूँ।"
+];
+SL.hi.userLosing = [
+  "तू इतना पीछे है कि मुझे देख भी नहीं पा रहा।", "ये अब खेल नहीं, तेरी हार को श्रद्धांजलि है।", "अभी हार मान ले, मैं कह दूँगा कि मुक़ाबला क़रीबी था।",
+  "तू इतना बुरा हार रहा है कि मुझे अपराधबोध है। लगभग।", "नतीजा साफ़ है। बस तेरी उम्मीद उसे टाल रही है।", "बराबरी के लिए एक हाथ से खेलूँ क्या?",
+  "चिंता मत कर, हारने से चरित्र बनता है। तेरा तो बहुत बनेगा।", "ड्रॉ ऑफ़र करता, पर मैं ख़ुद की इज़्ज़त करता हूँ।"
+];
+
+const sPick = (cat, pt, prev, lang) => {
+  const set = SL[lang] || SL.en;
+  const a = set[cat];
+  let t = a[Math.floor(Math.random() * a.length)];
+  if (a.length > 1 && t === prev) t = a[(a.indexOf(t) + 1) % a.length];
+  const name = lang === "hi" ? PNH[pt] || "मोहरा" : (PN[pt] || "piece").toLowerCase();
+  return t.replace(/\{p\}/g, name);
+};
+
+
 /* ---------------- the game ---------------- */
  export default function ChessGame({ kit, ui, lang, S, role, names, level, side, net, onFinish, lc, opt: optIn }) {
   const opt = optIn || {};
@@ -611,6 +745,7 @@ function moveWords(st, m, pt) {
     const [hint, setHint] = useState(null);
   const [hinting, setHinting] = useState(false);
     const [pick, setPick] = useState(null); // which move chip is tapped
+        const run = useRef(0); // how many blunders in a row
   const stripRef = useRef(null);
   const [log, setLog] = useState([]);
   const tl = useRef([]); // timeline of positions for back / forward
@@ -630,7 +765,7 @@ function moveWords(st, m, pt) {
 
   const flipped = local ? auto && turn === 2 : myP === 2;
   const colorOf = (s) => (s === 1 ? GC : TC);
-  const nameOf = (s) => (s === hs ? names.host : names.guest);
+    const nameOf = (s) => (cpu && s === aiP ? "Prabhat" : s === hs ? names.host : names.guest);
   const size = Math.floor(Math.min(boxW, 460));
   const cell = size / 8;
   const X = (c) => (flipped ? 7 - c : c);
@@ -662,6 +797,27 @@ function moveWords(st, m, pt) {
     const chk = inCheck(s1, opp);
     const nlast = { who, m, id: moverId, piece: mover.t, pt: m.promo ? pt || "Q" : null, chk: chk && oppMoves.length > 0, k: Math.random(), words };
     const key = posKey(ns.b, opp, ns.cast, ns.ep);
+        if (cpu) {
+      const ai = who === aiP;
+      const tgt = S0.b[m.tr][m.tc];
+      const ct = m.ep ? "P" : tgt && tgt.t;
+      const capVal = ct ? VAL[ct] : 0;
+      const sw = (who === 1 ? 1 : -1) * (evalW(ns.b) - evalW(S0.b));
+      const hanging = !m.castle && attacked(ns.b, m.tr, m.tc, opp) && !attacked(ns.b, m.tr, m.tc, who) && VAL[mover.t] > capVal + 50;
+      const mt = !oppMoves.length && chk;
+      const cat = ai
+        ? mt ? "aiMate" : m.promo ? "aiPromo" : chk ? "aiCheck" : m.cap ? "aiCap" : m.castle ? "aiCastle" : "aiQuiet"
+                : mt ? "userMate" : hint && sameMove(hint.m, m) ? "usedHint" : hanging && VAL[mover.t] >= 500 ? "userHuge" : hanging || sw < -120 ? "userBlunder" : sw > 150 ? "userGood" : chk ? "userCheck" : m.cap ? "userCap" : "userQuiet";
+                        let fc = cat;
+      if (!ai) {
+        const isB = cat === "userBlunder" || cat === "userHuge";
+        run.current = isB ? run.current + 1 : 0;
+        const bal = (who === 1 ? 1 : -1) * evalW(ns.b);
+        if (isB && run.current >= 2) fc = "userStreak";
+        else if (cat === "userQuiet" && bal < -400) fc = "userLosing";
+      }
+      setChat({ text: sPick(fc, fc === "userHuge" || fc === "userBlunder" || fc === "userStreak" ? mover.t : ct, chat && chat.text, lang), k: Math.random() });
+    }
         const nlog = [...log, { w: words, t: mover.t, s: who, to: sq(m.tr, m.tc), cap: !!m.cap, castle: m.castle || null, pt: m.promo ? pt || "Q" : null }];
     // remember this position so Back / Forward can return to it
     if (!tl.current.length) tl.current.push({ pcs, meta, turn, last, hist: hist.current.slice(), log });
@@ -688,7 +844,7 @@ function moveWords(st, m, pt) {
     if (!s) return;
     ptr.current = i;
     setPcs(s.pcs); setMeta(s.meta); setTurn(s.turn); setLast(s.last); setLog(s.log);
-        hist.current = s.hist.slice(); setPick(null);
+        hist.current = s.hist.slice(); setPick(null); setChat(null); run.current = 0;
     setSel(null); setAsk(null); setHint(null);
   };
   // vs computer: go back / forward to the last position where it was YOUR turn
@@ -796,6 +952,25 @@ function moveWords(st, m, pt) {
             </motion.p>
           )}
         </div>
+          
+                  {cpu && (
+          <div className="mb-1 flex min-h-[34px] items-center">
+            <AnimatePresence mode="wait">
+              {chat && (
+                <motion.div
+                  key={chat.k} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                  className="flex max-w-full items-center gap-2"
+                >
+                  <span className="text-[18px]">🤖</span>
+                  <p className="rounded-2xl rounded-tl-sm px-3 py-1.5 text-[12px] font-semibold" style={{ background: "rgba(255,255,255,.12)", color: "#efe8d6", boxShadow: "inset 0 0 0 1px rgba(240,203,98,.35)" }}>
+                    <b style={{ color: "#f0cb62" }}>{nameOf(aiP)}: </b>{chat.text}
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
         <div className="min-h-[28px]"><Warn w={wn} /></div>
       </div>
 
