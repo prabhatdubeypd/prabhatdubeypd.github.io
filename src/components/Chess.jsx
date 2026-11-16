@@ -745,6 +745,8 @@ const sPick = (cat, pt, prev, lang) => {
     const [hint, setHint] = useState(null);
   const [hinting, setHinting] = useState(false);
     const [pick, setPick] = useState(null); // which move chip is tapped
+      const [chat, setChat] = useState(null); // computer's sledging line
+  const run = useRef(0); // how many blunders in a row
         const run = useRef(0); // how many blunders in a row
   const stripRef = useRef(null);
   const [log, setLog] = useState([]);
