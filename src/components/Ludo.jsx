@@ -196,6 +196,13 @@ function RealDice({ value, rolling }) {
   const running = useRef(false);
   const duration = 0.95;
 
+    useEffect(() => {
+    if (!ref.current || rolling) return;
+    const t0 = DICE_FACE_ROTATIONS[value] || DICE_FACE_ROTATIONS[1];
+    ref.current.rotation.set(t0[0], t0[1], t0[2]);
+    invalidate();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!rolling || !ref.current) return;
     const r = ref.current.rotation;
@@ -269,7 +276,18 @@ function DiceScene({ value, rolling }) {
 }
 
 
-
+/* small flat dice for players who are not rolling */
+function DiceFace2D({ v }) {
+  return (
+    <div style={{ position: "absolute", inset: "10%", borderRadius: 8, background: "linear-gradient(145deg,#ffffff,#d9dde4)", boxShadow: "0 2px 4px rgba(0,0,0,.35)", display: "grid", gridTemplateColumns: "repeat(3,1fr)", gridTemplateRows: "repeat(3,1fr)", padding: "12%" }}>
+      {Array.from({ length: 9 }).map((_, i) => (
+        <span key={i} style={{ display: "grid", placeItems: "center" }}>
+          {PIPS[v] && PIPS[v].includes(i) ? <i style={{ width: "78%", height: "78%", borderRadius: "50%", background: "#11151d" }} /> : null}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 
 /* Premium dice component */
@@ -486,7 +504,7 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
   const doRoll = (d, fromNet) => run(async () => {
     const g = G.current;
     if (g.phase !== "roll" || g.over) return;
-    g.phase = "rolling"; g.dice = d; g.msg = ""; g.rollN += 1; re();
+        g.phase = "rolling"; g.dice = d; (g.ld = g.ld || [])[g.turn] = d; g.msg = ""; g.rollN += 1; re();
     if (online && !fromNet) net.send({ t: "ld", d });
     await nap(1000);
     const who = g.turn;
@@ -623,6 +641,48 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
   cor.forEach((c, s) => { seatAt[c] = s; });
   const cellPct = 100 / 15;
 
+    // which player sits in which corner of YOUR screen: 0 top-left, 1 top-right, 2 bottom-right, 3 bottom-left
+  const seatAtV = {};
+  cor.forEach((c, s) => { seatAtV[(c - k + 4) % 4] = s; });
+  const diceBox = Math.max(38, Math.min(54, Math.floor(size * 0.115)));
+  const chip = (v) => {
+    const s = seatAtV[v];
+    if (s === undefined) return <div key={v} style={{ width: 1 }} />;
+    const active = ready && !g.over && g.turn === s;
+    const col = COLS[s];
+    const val = (g.ld && g.ld[s]) || 1;
+    const left = v === 0 || v === 3;
+    const pulse = active && canRoll;
+    return (
+      <motion.div
+        key={v}
+        animate={pulse ? { scale: [1, 1.06, 1] } : { scale: 1 }}
+        transition={pulse ? { repeat: Infinity, duration: 1.1, ease: "easeInOut" } : { duration: 0.2 }}
+        style={{
+          display: "flex", flexDirection: left ? "row" : "row-reverse", alignItems: "center", gap: 4, padding: 3, borderRadius: 10,
+          background: "linear-gradient(145deg,#1a4a9a,#0b2a66)",
+          border: `2px solid ${active ? "#f7d56a" : "rgba(247,213,106,.3)"}`,
+          boxShadow: active ? `0 0 12px ${col}, 0 0 0 1px ${col}` : "none",
+          opacity: active ? 1 : 0.75, transition: "opacity .3s, border-color .3s",
+        }}
+      >
+        <div style={{ width: diceBox * 0.5, height: diceBox * 0.66 }}><Pin color={col} /></div>
+        <div
+          onClick={active ? tapDice : undefined}
+          style={{ position: "relative", width: diceBox, height: diceBox, borderRadius: 8, background: "linear-gradient(145deg,#f8dede,#e0b2b2)", cursor: pulse ? "pointer" : "default", WebkitTapHighlightColor: "transparent" }}
+        >
+          {active ? (
+            <div style={{ position: "absolute", inset: "-25%", pointerEvents: "none" }}>
+              <DiceScene value={val} rolling={rolling} />
+            </div>
+          ) : (
+            <DiceFace2D v={val} />
+          )}
+        </div>
+      </motion.div>
+    );
+  };
+
   const list = [];
   g.tok.forEach((arr, s) => arr.forEach((p, i) => list.push({ s, i, p, pos: posOf(cor[s], p, i) })));
   const groups = {};
@@ -667,6 +727,10 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
         <TurnBar players={players} turn={g.over ? -1 : g.turn} S={S} local={local} over={g.over} />
         {g.last ? <LastLine S={S} name={nameOf(g.last.who)} color={COLS[g.last.who]}>{lastTxt}</LastLine> : <div className="min-h-[30px]" />}
         <Warn w={wn} />
+      </div>
+
+            <div className="mx-auto flex items-center justify-between" style={{ width: size, marginTop: 6 }}>
+        {chip(0)}{chip(1)}
       </div>
 
       <motion.div animate={shake} className="w-full">
@@ -1112,6 +1176,24 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
                   })}
                 </div>
 
+
+                                {/* player names, small, inside the coloured yard border */}
+                <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 5 }}>
+                  {cor.map((c, s) => {
+                    const v = (c - k + 4) % 4;
+                    return (
+                      <div
+                        key={`nm${s}`}
+                        style={{ position: "absolute", [v < 2 ? "top" : "bottom"]: 0, left: v === 0 || v === 3 ? "0%" : "60%", width: "40%", height: cell * 0.72, display: "flex", alignItems: "center", justifyContent: "center" }}
+                      >
+                        <span style={{ fontSize: Math.max(8, Math.floor(cell * 0.4)), fontWeight: 800, lineHeight: 1, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,.75)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "90%" }}>
+                          {nameOf(s)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
                 {/* captures and arrivals */}
                 <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 8 }}>
                   {g.fx.map((f) => {
@@ -1172,160 +1254,10 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
       </motion.div>
 
      
-{/* PREMIUM PLAYER + DICE CONTROL PANEL */}
-<div
-  className="mt-7 w-full max-w-[440px] rounded-[24px] p-[1px]"
-  style={{
-    background: `linear-gradient(135deg,${turnColor},#f4d477,#ffffff22,${turnColor})`,
-    boxShadow: `0 12px 35px rgba(0,0,0,.38), 0 0 22px ${turnColor}22`,
-  }}
->
-  <div
-    className="relative flex items-center justify-between gap-2 overflow-hidden rounded-[23px] px-3 py-4"
-    style={{
-      background: "linear-gradient(145deg,#183b72 0%,#102953 48%,#091a37 100%)",
-    }}
-  >
-    {/* Background shine */}
-    <div
-      className="pointer-events-none absolute inset-0"
-      style={{
-        background: "linear-gradient(115deg,rgba(255,255,255,.09),transparent 40%,rgba(255,255,255,.025))",
-      }}
-    />
-
-    {/* PLAYER INFORMATION */}
-    <div className="relative flex min-w-0 flex-1 items-center gap-2">
-      {ready && (
-        <>
-          <div
-            className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl"
-            style={{
-              background: "linear-gradient(145deg,#ffffff20,#ffffff08)",
-              border: `1px solid ${turnColor}99`,
-              boxShadow: `0 0 15px ${turnColor}33`,
-            }}
-          >
-            <div className="h-8 w-6">
-              <Pin
-                s={g.over ? 0 : g.turn}
-                color={g.over ? COLS[0] : COLS[g.turn]}
-              />
-            </div>
-          </div>
-
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <p
-                className="truncate text-[13px] font-black text-white"
-              >
-                {g.over ? "GAME OVER" : nameOf(g.turn)}
-              </p>
-
-              {!local && mine(g.turn) && (
-                <span
-                  className="shrink-0 rounded-md px-1.5 py-0.5 text-[8px] font-black tracking-wider"
-                  style={{
-                    background: "#f5cf70",
-                    color: "#182744",
-                  }}
-                >
-                  YOU
-                </span>
-              )}
-            </div>
-
-            <div
-              className="mt-1 flex items-center gap-1.5 text-[9px] font-bold tracking-[1.2px]"
-              style={{ color: "#f4d477" }}
-            >
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{
-                  background: turnColor,
-                  boxShadow: `0 0 8px ${turnColor}`,
-                }}
-              />
-              {local
-                ? "PLAYER TURN"
-                : mine(g.turn)
-                  ? "YOUR TURN"
-                  : "OPPONENT TURN"}
-            </div>
-
-            <p className="mt-1 truncate text-[10px] text-blue-100/65">
-              {g.over ? "Congratulations!" : rolling ? "Dice is rolling..." : status}
-            </p>
-          </div>
-        </>
-      )}
-    </div>
-
-    {/* CENTER DICE */}
-    <div
-      className="relative flex shrink-0 flex-col items-center justify-center"
-      style={{ minWidth: 106 }}
-    >
-      <div
-        className="mb-1 text-[9px] font-black tracking-[2px]"
-        style={{ color: "#f5d783" }}
-      >
-        {rolling ? "ROLLING" : "YOUR DICE"}
+      <div className="mx-auto flex items-center justify-between" style={{ width: size, marginTop: 10 }}>
+        {chip(3)}{chip(2)}
       </div>
-
-      <Die
-        v={shown}
-        rolling={rolling}
-        color={turnColor}
-        disabled={!canRoll}
-        onClick={tapDice}
-        size={70}
-      />
-
-      <p
-        className="mt-2 text-[9px] font-semibold"
-        style={{ color: "#ffffff99" }}
-      >
-        {rolling ? "Good luck!" : canRoll ? "TAP TO ROLL" : "LUDO"}
-      </p>
-    </div>
-
-    {/* RIGHT SIDE: DICE RESULT */}
-    <div className="relative flex min-w-0 flex-1 flex-col items-end">
-      <div
-        className="rounded-xl px-3 py-2 text-center"
-        style={{
-          background: "rgba(255,255,255,.07)",
-          border: "1px solid rgba(255,255,255,.12)",
-        }}
-      >
-        <p className="text-[8px] font-bold tracking-widest text-blue-100/70">
-          LAST ROLL
-        </p>
-
-        <p
-          className="mt-1 text-2xl font-black"
-          style={{
-            color: "#ffdf85",
-            textShadow: "0 0 12px rgba(255,205,90,.3)",
-          }}
-        >
-          {g.dice || "—"}
-        </p>
-      </div>
-
-      <p className="mt-2 text-right text-[9px] font-semibold text-blue-100/70">
-        {g.phase === "move"
-          ? "Move your token"
-          : g.phase === "rolling"
-            ? "Rolling..."
-            : g.phase === "pass"
-              ? "No move"
-              : "Ready"}
-      </p>
-    </div>
-  </div>
-</div>
+      <p className="mt-2 text-center text-[10px] font-semibold" style={{ color: "#ffffffaa" }}>{status}</p>
 </div>
   );
 }

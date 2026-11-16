@@ -42,7 +42,7 @@ export default function App() {
       <Preloader />
       {!loading && (
         <>
-        <MetaSync />
+        <MetaSync /><LinkAction />
         <CodeGuard />
           <HireModal /><HireNudge /> <ShareSite />
           <PrivacyModal />

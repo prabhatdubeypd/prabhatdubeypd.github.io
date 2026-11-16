@@ -337,8 +337,14 @@ async function lookup(slug) {
   try {
     const q = supabase.from("bio_links").select("*").eq("slug", slug).eq("enabled", true).limit(1);
     const r = await Promise.race([q.then((x) => x), sleep(4000).then(() => null)]);
+    if (!r) console.warn("[short link] the lookup timed out");
+    else if (r.error) console.warn("[short link] Supabase error:", r.error.message);
+    else if (!r.data || !r.data[0]) console.warn(`[short link] no enabled row with slug "${slug}" in bio_links`);
     return r && r.data && r.data[0] ? r.data[0] : null;
-  } catch { return null; }
+  } catch (e) {
+    console.warn("[short link]", e);
+    return null;
+  }
 }
 
 export function LinkGate({ route, done }) {
@@ -379,10 +385,11 @@ export function LinkGate({ route, done }) {
 /* runs the action that a short link asked for, once the site is on screen */
 export function LinkAction() {
   useEffect(() => {
-    const a = window.__bioAction;
-    if (!a) return undefined;
-    window.__bioAction = null;
+    if (!window.__bioAction) return undefined;
     const t = setTimeout(() => {
+      const a = window.__bioAction;
+      window.__bioAction = null; // cleared only when it really runs (React dev mode runs effects twice)
+      if (!a) return;
       if (a.kind === "hire") window.dispatchEvent(new CustomEvent("open-hire"));
       else if (a.kind === "call") openCal();
     }, 1200);
