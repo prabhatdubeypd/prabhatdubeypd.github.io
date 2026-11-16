@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 const CT = {
@@ -610,6 +610,8 @@ function moveWords(st, m, pt) {
   const [think, setThink] = useState(false);
     const [hint, setHint] = useState(null);
   const [hinting, setHinting] = useState(false);
+    const [pick, setPick] = useState(null); // which move chip is tapped
+  const stripRef = useRef(null);
   const [log, setLog] = useState([]);
   const tl = useRef([]); // timeline of positions for back / forward
   const ptr = useRef(0);
@@ -620,6 +622,12 @@ function moveWords(st, m, pt) {
   const boxW = ui.useWidth(boxRef, 360);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
+    // keep the newest move in view
+  useEffect(() => {
+    const el = stripRef.current;
+    if (el) el.scrollTo({ left: el.scrollWidth, behavior: "smooth" });
+  }, [log.length]);
+
   const flipped = local ? auto && turn === 2 : myP === 2;
   const colorOf = (s) => (s === 1 ? GC : TC);
   const nameOf = (s) => (s === hs ? names.host : names.guest);
@@ -628,11 +636,11 @@ function moveWords(st, m, pt) {
   const X = (c) => (flipped ? 7 - c : c);
   const Y = (r) => (flipped ? 7 - r : r);
 
-  const grid = gridOf(pcs);
+    const grid = useMemo(() => gridOf(pcs), [pcs]);
   if (!hist.current) hist.current = [posKey(grid, 1, meta.cast, meta.ep)];
   const S0 = { b: grid, cast: meta.cast, ep: meta.ep, half: meta.half };
-  const moves = turn ? legalFor(S0, turn) : [];
-  const checked = turn ? inCheck(S0, turn) : false;
+    const moves = useMemo(() => (turn ? legalFor({ b: grid, cast: meta.cast, ep: meta.ep, half: meta.half }, turn) : []), [grid, meta, turn]);
+  const checked = useMemo(() => (turn ? inCheck({ b: grid, cast: meta.cast, ep: meta.ep, half: meta.half }, turn) : false), [grid, meta, turn]);
   const canAct = !res && !waiting && turn !== 0 && !ask && (local || turn === myP);
   const destMap = {};
   if (sel && canAct) moves.filter((m) => m.fr === sel[0] && m.fc === sel[1]).forEach((m) => { destMap[`${m.tr}-${m.tc}`] = m; });
@@ -654,7 +662,7 @@ function moveWords(st, m, pt) {
     const chk = inCheck(s1, opp);
     const nlast = { who, m, id: moverId, piece: mover.t, pt: m.promo ? pt || "Q" : null, chk: chk && oppMoves.length > 0, k: Math.random(), words };
     const key = posKey(ns.b, opp, ns.cast, ns.ep);
-    const nlog = [...log, words];
+        const nlog = [...log, { w: words, t: mover.t, s: who, to: sq(m.tr, m.tc), cap: !!m.cap, castle: m.castle || null, pt: m.promo ? pt || "Q" : null }];
     // remember this position so Back / Forward can return to it
     if (!tl.current.length) tl.current.push({ pcs, meta, turn, last, hist: hist.current.slice(), log });
     tl.current = tl.current.slice(0, ptr.current + 1); // a different move cancels Forward
@@ -662,7 +670,7 @@ function moveWords(st, m, pt) {
     ptr.current = tl.current.length - 1;
     setPcs(npcs);
     setMeta(nmeta);
-    setLog(nlog);
+        setLog(nlog); setPick(null);
     setSel(null); setAsk(null); setHint(null);
     setLast(nlast);
     if (online && !fromNet) net.send({ t: "ch", m: { fr: m.fr, fc: m.fc, tr: m.tr, tc: m.tc, pt: pt || null } });
@@ -680,21 +688,23 @@ function moveWords(st, m, pt) {
     if (!s) return;
     ptr.current = i;
     setPcs(s.pcs); setMeta(s.meta); setTurn(s.turn); setLast(s.last); setLog(s.log);
-    hist.current = s.hist.slice();
+        hist.current = s.hist.slice(); setPick(null);
     setSel(null); setAsk(null); setHint(null);
   };
   // vs computer: go back / forward to the last position where it was YOUR turn
   const backTo = () => { for (let i = ptr.current - 1; i >= 0; i--) if (local || tl.current[i].turn === myP) return i; return -1; };
   const fwdTo = () => { for (let i = ptr.current + 1; i < tl.current.length; i++) if (local || tl.current[i].turn === myP) return i; return -1; };
-  const getHint = () => {
+    const getHint = () => {
     if (!cpu || !canAct || hinting) return;
     setHinting(true);
     setTimeout(() => {
       if (!alive.current) return;
-      const m = chessMove(S0, myP, "hard", hist.current, { ms: 1200, depth: 6, blunder: 0 });
+      // the hint searches about 3x longer and deeper than the computer, so it is always the better player
+            const ms = Math.max(1500, ((lc && lc.ms) || 1500) * 1.3);
+      const m = chessMove(S0, myP, "hard", hist.current, { ms, depth: 10, blunder: 0 });
       setHinting(false);
       if (m) { setSel(null); setHint({ m, words: moveWords(S0, m, "Q") }); }
-    }, 40);
+    }, 80);
   };
   // the friend's move is only accepted if it really is legal for them right now
   fn.current.net = (m) => {
@@ -779,14 +789,14 @@ function moveWords(st, m, pt) {
             ) : null}
           </AnimatePresence>
         </div>
-                {hint && (
-          <div className="mb-1 flex justify-center">
+                        <div className="mb-1 flex min-h-[32px] items-center justify-center">
+          {hint && (
             <motion.p initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="rounded-full px-4 py-1 text-[12px] font-bold" style={{ background: "rgba(0,200,255,.18)", color: "#a8ecff", boxShadow: "inset 0 0 0 1px rgba(0,200,255,.7)" }}>
               💡 {hint.words}
             </motion.p>
-          </div>
-        )}
-        <Warn w={wn} />
+          )}
+        </div>
+        <div className="min-h-[28px]"><Warn w={wn} /></div>
       </div>
 
       <motion.div animate={shake} className="w-full">
@@ -862,7 +872,7 @@ function moveWords(st, m, pt) {
                         <motion.div
                           animate={{ scale: isSel ? 1.12 : 1, y: isSel ? -cell * 0.06 : 0 }}
                           transition={{ type: "spring", stiffness: 340, damping: 22 }}
-                          style={{ width: "100%", height: "100%", padding: "3%", boxSizing: "border-box", filter: isSel ? "drop-shadow(0 4px 5px rgba(0,0,0,.45))" : "drop-shadow(0 1px 1px rgba(0,0,0,.35))" }}
+                          style={{ width: "100%", height: "100%", padding: "3%", boxSizing: "border-box", filter: isSel ? "drop-shadow(0 4px 5px rgba(0,0,0,.45))" : "none" }}
                         >
                           <PieceSvg t={pc.t} gold={gold} />
                         </motion.div>
@@ -974,21 +984,29 @@ function moveWords(st, m, pt) {
         </div>
       )}
 
-      {log.length > 0 && (
+            <div className="mt-3 w-full max-w-[460px]">
         <div
-          ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}
-          className="mt-3 max-h-24 w-full max-w-[460px] overflow-y-auto rounded-xl px-3 py-2 text-[11px]"
-          style={{ background: "rgba(255,255,255,.06)", color: "#efe8d6" }}
+          ref={stripRef}
+          className="flex items-center gap-2 overflow-x-auto rounded-xl px-2"
+          style={{ height: 46, background: "rgba(255,255,255,.06)", WebkitOverflowScrolling: "touch", touchAction: "pan-x", scrollbarWidth: "none" }}
         >
-          {Array.from({ length: Math.ceil(log.length / 2) }).map((_, i) => (
-            <div key={i} className="flex gap-2">
-              <span className="w-5 opacity-60">{i + 1}.</span>
-              <span className="flex-1">{log[2 * i]}</span>
-              <span className="flex-1">{log[2 * i + 1] || ""}</span>
-            </div>
+          {log.map((e, i) => (
+            <button
+              key={i} type="button" onClick={() => setPick(pick === i ? null : i)}
+              className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1"
+              style={{ background: pick === i ? "rgba(240,203,98,.3)" : "rgba(255,255,255,.08)", boxShadow: pick === i ? "inset 0 0 0 1px rgba(240,203,98,.9)" : "none", color: "#efe8d6", WebkitTapHighlightColor: "transparent" }}
+            >
+              {i % 2 === 0 && <span className="text-[9px] opacity-60">{i / 2 + 1}.</span>}
+              <span style={{ width: 22, height: 22, display: "block" }}><PieceSvg t={e.t} gold={colorOf(e.s) === GC} /></span>
+              <span className="text-[11px] font-bold">{e.castle ? (e.castle === "k" ? "O-O" : "O-O-O") : `${e.cap ? "×" : ""}${e.to}`}</span>
+              {e.pt && <span style={{ width: 16, height: 16, display: "block" }}><PieceSvg t={e.pt} gold={colorOf(e.s) === GC} /></span>}
+            </button>
           ))}
         </div>
-      )}
+        <p className="mt-1 min-h-[18px] text-center text-[11px] font-semibold" style={{ color: "#f0cb62" }}>
+          {pick !== null && log[pick] ? log[pick].w : ""}
+        </p>
+      </div>
     </div>
   );
 }
