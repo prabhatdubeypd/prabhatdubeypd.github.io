@@ -583,7 +583,7 @@ function moveWords(st, m, pt) {
   return w + (mate ? ", checkmate!" : chk ? ", check" : "");
 }
 
-/* ---------------- computer sledging (trash talk) ---------------- */
+
 /* ---------------- computer sledging (trash talk) ---------------- */
 const PNH = { K: "राजा", Q: "वज़ीर", R: "हाथी", B: "ऊँट", N: "घोड़ा", P: "प्यादा" };
 const SL = {
@@ -746,6 +746,7 @@ const sPick = (cat, pt, prev, lang) => {
   const [hinting, setHinting] = useState(false);
     const [pick, setPick] = useState(null); // which move chip is tapped
       const [chat, setChat] = useState(null); // computer's sledging line
+        const run = useRef(0); // how many blunders in a row
   
   const stripRef = useRef(null);
   const [log, setLog] = useState([]);
