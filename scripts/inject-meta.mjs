@@ -67,7 +67,10 @@ const site = String(m.site_url).replace(/\/+$/, "");
 const abs = (u) => (/^https?:\/\//i.test(u) ? u : `${site}/${String(u).replace(/^\/+/, "")}`);
 const img = abs(m.og_image_url);
 const icon = `data:image/svg+xml,${encodeURIComponent(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>${m.favicon_emoji}</text></svg>`
+  `<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+<link rel="shortcut icon" href="/favicon.ico" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" /></svg>`
 )}`;
 
 const person = {
