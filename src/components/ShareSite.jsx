@@ -7,7 +7,7 @@ import { tx } from "../lib/i18n";
 import { track } from "../lib/analytics";
 
 /* ---------- what you can tune ---------- */
-const LIVE_URL = "https://prabhatdubeypd.github.io/"; // links made while testing on localhost use this address, so the QR works on a phone
+const LIVE_URL = "https://prabhatdubey.com/"; // links made while testing on localhost use this address, so the QR works on a phone
 const START_DELAY = 1800; // wait this long after the page opens before jumping to a shared section (lets the preloader finish)
 const FAB_BOTTOM = 96; // distance of the share button from the bottom
 const FAB_SIDE = "right"; // "left" or "right"
