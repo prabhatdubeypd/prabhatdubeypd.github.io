@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { RoundedBox } from "@react-three/drei";
@@ -11,6 +11,7 @@ const LT = {
     notYours: "That is {name}'s token", needSix: "You need a 6 to leave the base", alreadyHome: "That token is already home",
     tooFar: "That token cannot move {d} steps (you need an exact roll to reach home)",
     rolled: "rolled {d}", out: "left the base", captured: "captured a token!", home: "reached home!", nomove: "no move possible",
+    threeSix: "three 6s, moves cancelled, roll again",
     chooseColor: "Choose your color", chooseSub: "Your tokens start in this corner", pickColorFirst: "Choose your color to start",
     names: ["Green", "Yellow", "Blue", "Red"],
   },
@@ -20,6 +21,7 @@ const LT = {
     notYours: "यह {name} की गोटी है", needSix: "बेस से निकलने के लिए 6 चाहिए", alreadyHome: "यह गोटी पहले ही घर पहुँच चुकी है",
     tooFar: "यह गोटी {d} कदम नहीं चल सकती (घर के लिए सटीक अंक चाहिए)",
     rolled: "ने {d} फेंका", out: "गोटी बेस से निकली", captured: "ने गोटी पकड़ी!", home: "गोटी घर पहुँची!", nomove: "कोई चाल संभव नहीं",
+    threeSix: "तीन 6, चालें रद्द, दोबारा पासा फेंकें",
     chooseColor: "अपना रंग चुनें", chooseSub: "आपकी गोटियाँ इसी कोने से शुरू होंगी", pickColorFirst: "शुरू करने के लिए रंग चुनें",
     names: ["हरा", "पीला", "नीला", "लाल"],
   },
@@ -38,6 +40,190 @@ export const HOW = {
     "दुश्मन की गोटी पर उतरें तो वह बेस में लौट जाती है, पर तारे या स्टार्ट वाले खाने पर वह सुरक्षित है।",
     "चमकती गोटी (या उसका लैंडिंग निशान) छुएँ और वह चल पड़ेगी। अपनी रंगीन लेन में जाकर सटीक अंक से बीच में पहुँचें। जो पहले चारों गोटियाँ घर पहुँचाए वही जीतता है। आपका अपना बेस हमेशा आपकी स्क्रीन के नीचे-बाएँ दिखता है।",
   ],
+};
+
+/* ---------------- computer commentary (only when playing vs computer) ---------------- */
+const CM = {
+  en: {
+    humanSix: [
+      "A six? Even a broken clock gets lucky twice a day.",
+      "Enjoy it. That's the only six you'll see this week.",
+      "Wow, a six. Mom will finally be proud of something you did.",
+      "Frame that six. It's the only good decision your hand ever made.",
+      "Beginner's luck. Sadly, you've been a beginner for years.",
+      "A six and you still look like a loser. That's talent.",
+    ],
+    humanMiss: [
+      "No move? Even your tokens gave up on you.",
+      "Zero moves. Impressive, that takes real talent.",
+      "Skill issue. Maybe try rolling with your eyes open.",
+      "Your dice has more self-respect than you. It left.",
+      "No move. Your strategy is working perfectly, for me.",
+      "A coconut could roll better than you.",
+    ],
+    humanCapture: [
+      "Lucky hit. My token was just stretching anyway.",
+      "You captured one token. Frame it, it's your career highlight.",
+      "Fine, take it. I'm saving my energy for the real fight.",
+      "Congrats, you finally did something. Don't cry from joy.",
+      "One capture and you think you're a champion? Adorable.",
+      "Enjoy it. That's the peak of your gaming life.",
+    ],
+    botCapture: [
+      "Sent you home! Say hi to your base for me.",
+      "Captured! That's what happens when you play a legend.",
+      "Back to base, rookie. Your token never stood a chance.",
+      "Delete that token from your memory, it's gone.",
+      "Cry about it. Your token is already crying.",
+      "Poor thing, you walked straight into my mouth.",
+    ],
+    botSix: [
+      "Six! Some of us are just born for this.",
+      "Look at that six. Watch and learn.",
+      "Six again. Luck? No, pure talent.",
+      "Six! Your turn to watch me do all the work.",
+      "The dice loves me. You, not so much.",
+      "Six. Easy. Do you even know how this works?",
+    ],
+    botMiss: [
+      "Bad roll. Even legends have off days. Don't get used to it.",
+      "No move for me. Enjoy it, it won't last.",
+      "The dice betrayed me. Your turn to waste your luck.",
+      "I rolled bad on purpose. Out of pity for you.",
+      "Nothing. Still better than your whole game.",
+      "Bad roll, but I'm still ahead of you in brain cells.",
+    ],
+    humanHome: [
+      "One token home. Three more to go, see you next year.",
+      "A token reached home. Slow clap, genuinely.",
+      "Home already? Don't celebrate, I'm just warming up.",
+      "One home. The other three are lost and probably crying.",
+      "Wow, one token made it. Must have been a mistake.",
+      "Home! Now do it three more times, if you live that long.",
+    ],
+    botHome: [
+      "Home! Another one safe while yours wander lost.",
+      "My token is home. Yours is still lost in the neighbourhood.",
+      "Home delivery, with a free guarantee of your defeat.",
+      "Home sweet home. You'll never know the feeling.",
+      "Another one home. Are you even playing?",
+      "Mine is home. Yours needs a map and a miracle.",
+    ],
+    humanWin: [
+      "You won. I demand a recount.",
+      "Fine, you win. Even a blind squirrel finds a nut.",
+      "Victory is yours. Don't let it go to your head, it's empty up there.",
+      "You won by luck. Everyone knows it. Even you.",
+      "Enjoy it, that's the only trophy you'll ever get.",
+      "The dice felt sorry for you. That's the only reason.",
+    ],
+    botWin: [
+      "I win! Better luck next lifetime.",
+      "Game over. Try practicing on a coin toss first.",
+      "Defeated by a computer. Add it to your resume.",
+      "Lost to a machine. Your ancestors are disappointed.",
+      "GG. Uninstall and think about your life choices.",
+      "I didn't even try. That's the saddest part for you.",
+    ],
+    threeSix: [
+      "Three sixes? Greedy. The universe said no.",
+      "Three sixes and everything cancelled. That's karma.",
+      "Too many sixes. Even the dice got embarrassed for you.",
+      "Greed ruins everything, including your luck.",
+      "Three sixes? Nice try. Now go back to zero.",
+      "The dice said enough, even it can't stand you.",
+    ],
+  },
+  hi: {
+    humanSix: [
+      "छक्का? अंधे के हाथ बटेर लग गई।",
+      "मज़े ले ले, यही तेरा इस हफ़्ते का एकमात्र छक्का है।",
+      "वाह, छक्का! बैठे-बैठे किस्मत से कुछ तो मिला तुझे।",
+      "छक्का फ्रेम करवा ले, तेरे हाथ की यही एक सही चीज़ है।",
+      "बिगिनर्स लक है, और तू तो सालों से बिगिनर ही है।",
+      "छक्का लगा के भी हारने वाली शक्ल है तेरी।",
+    ],
+    humanMiss: [
+      "कोई चाल नहीं? तेरी गोटियों ने भी तुझसे हाथ जोड़ लिए।",
+      "ज़ीरो चाल! इसके लिए भी टैलेंट चाहिए भाई।",
+      "पहले पासा फेंकना सीख ले, फिर लूडो खेलना।",
+      "तेरे पासे में तुझसे ज़्यादा इज़्ज़त है, वो भाग गया।",
+      "चाल नहीं बनी? तेरी रणनीति मेरे लिए बढ़िया काम कर रही है।",
+      "इससे अच्छा तो नारियल लुढ़का देता।",
+    ],
+    humanCapture: [
+      "किस्मत से लग गया तुक्का, मेरी गोटी वैसे भी थक गई थी।",
+      "एक गोटी पकड़ ली? फ्रेम करवा ले, ज़िंदगी की सबसे बड़ी उपलब्धि है।",
+      "ले जा, मैं असली लड़ाई के लिए ताकत बचा रहा हूँ।",
+      "आखिर कुछ तो किया तूने, खुशी के मारे रो मत देना।",
+      "एक गोटी काट के खुद को चैंपियन समझ रहा है? प्यारा है।",
+      "मज़े ले ले, तेरी गेमिंग लाइफ का यही पीक है।",
+    ],
+    botCapture: [
+      "भेज दिया वापस बेस में! घर वालों को मेरा नमस्ते कहना।",
+      "कट गई तेरी गोटी! लीजेंड से पंगा नहीं लेते।",
+      "बेस में बैठ जा बच्चे, यह तेरे बस की बात नहीं।",
+      "उस गोटी को याद से मिटा दे, अब वो नहीं आने वाली।",
+      "रो ले, तेरी गोटी तो पहले से रो रही है।",
+      "बेचारे, सीधे मेरे मुँह में आकर बैठ गया तू।",
+    ],
+    botSix: [
+      "छक्का! कुछ लोग पैदा ही जीतने के लिए होते हैं।",
+      "देख छक्का कैसे लगता है, कुछ सीख ले।",
+      "फिर छक्का! किस्मत नहीं, यह टैलेंट है।",
+      "छक्का! अब बैठ के देख, काम मैं करूँगा।",
+      "पासा मुझसे प्यार करता है, तुझसे नहीं।",
+      "छक्का, आसान है। तुझे तो आता भी नहीं यह सब।",
+    ],
+    botMiss: [
+      "आज पासे ने धोखा दिया, पर तेरी किस्मत ज़्यादा देर साथ नहीं देगी।",
+      "मेरी चाल नहीं बनी, खुश हो ले दो पल।",
+      "खराब पासा आया, फिर भी तेरी किस्मत से बेहतर है।",
+      "जानबूझकर खराब फेंका, तुझ पर तरस आ गया।",
+      "कुछ नहीं बना, फिर भी तेरे पूरे गेम से बेहतर है।",
+      "चाल खराब है, पर दिमाग तुझसे फिर भी आगे है।",
+    ],
+    humanHome: [
+      "एक गोटी घर पहुँची। बाकी तीन के लिए अगले जन्म में मिलते हैं।",
+      "घर पहुँच गई, ताली बनती है, धीमी वाली।",
+      "अभी से खुश मत हो, मैं तो बस वार्म-अप कर रहा था।",
+      "एक घर पहुँची, बाकी तीन रास्ता भटक के रो रही होंगी।",
+      "वाह, एक पहुँच गई। ज़रूर कोई गलती हुई होगी।",
+      "घर पहुँची! अब तीन और पहुँचा, अगर तब तक ज़िंदा रहा।",
+    ],
+    botHome: [
+      "मेरी गोटी घर पहुँची, तेरी अभी भी गलियों में भटक रही है।",
+      "एक और सुरक्षित घर में, तेरी वाली अभी रास्ता पूछ रही है।",
+      "होम डिलीवरी हो गई, तेरी हार की गारंटी के साथ।",
+      "घर जैसा सुकून तुझे कभी नहीं मिलेगा।",
+      "एक और घर पहुँची, तू खेल भी रहा है या सो रहा है?",
+      "मेरी घर पहुँची, तेरी को नक्शा और चमत्कार चाहिए।",
+    ],
+    humanWin: [
+      "तू जीत गया? दोबारा गिनती करवाओ।",
+      "ठीक है जीत गया, अंधा भी कभी-कभी निशाना लगा देता है।",
+      "जीत मुबारक, पर ज़्यादा उड़ मत, दिमाग तो वैसे भी खाली है।",
+      "किस्मत से जीता है, सबको पता है, तुझे भी।",
+      "मज़े ले ले, यही तेरी ज़िंदगी की एकमात्र ट्रॉफी है।",
+      "पासे को तुझ पर तरस आया, बस इसीलिए जीता है।",
+    ],
+    botWin: [
+      "मैं जीत गया! अगले जन्म में कोशिश करना।",
+      "खेल खत्म। पहले सिक्का उछालना सीख ले।",
+      "कंप्यूटर से हार गया, बायोडाटा में लिख लेना।",
+      "मशीन से हार गया, तेरे पूर्वज निराश हैं।",
+      "GG। अनइंस्टॉल कर दे और अपनी ज़िंदगी के फैसलों पर सोच।",
+      "मैंने तो कोशिश भी नहीं की, यही तेरे लिए सबसे दुख की बात है।",
+    ],
+    threeSix: [
+      "तीन छक्के? लालच का फल मिला, सब रद्द।",
+      "इतने छक्के! किस्मत ने कहा बस कर भाई।",
+      "तीन छक्के और सब कैंसल, इसे कहते हैं कर्मा।",
+      "लालच ने सब बिगाड़ दिया, तेरी किस्मत भी।",
+      "तीन छक्के? अच्छी कोशिश थी, अब वापस ज़ीरो पर आ।",
+      "पासे ने कहा बहुत हो गया, वो भी तुझे झेल नहीं पा रहा।",
+    ],
+  },
 };
 
 /* ---------------- the board (52 ring squares, 4 corners) ---------------- */
@@ -61,18 +247,21 @@ const BASEP = [
   [[10, 10], [10, 13], [13, 10], [13, 13]],
   [[10, 1], [10, 4], [13, 1], [13, 4]],
 ];
-const FINP = [
-  [[6.3, 6.45], [6.77, 6.45], [7.23, 6.45], [7.7, 6.45]],
-  [[6.45, 6.3], [6.45, 6.77], [6.45, 7.23], [6.45, 7.7]],
-  [[6.3, 8.55], [6.77, 8.55], [7.23, 8.55], [7.7, 8.55]],
-  [[8.55, 6.3], [8.55, 6.77], [8.55, 7.23], [8.55, 7.7]],
-];
+const FIN_SC = 0.6; // size of a finished token
+const FINP = [0, 1, 2, 3].map((c) =>
+  [-0.27, -0.09, 0.09, 0.27].map((o) => {
+    const [cx, cy] = c === 0 ? [6.55, 7.5 + o] : c === 1 ? [7.5 + o, 6.55] : c === 2 ? [8.45, 7.5 + o] : [7.5 + o, 8.45];
+    return [cy - 0.526, cx - 0.5]; // pin box top-left, so the pin is centred on (cx, cy)
+  })
+);
 const CORNER_XY = [[0, 0], [9, 0], [9, 9], [0, 9]];
 const TRI = ["6,6 6,9 7.5,7.5", "6,6 9,6 7.5,7.5", "9,6 9,9 7.5,7.5", "6,9 9,9 7.5,7.5"];
 // the colour of each corner, like Ludo King: green top-left, yellow top-right, blue bottom-right, red bottom-left
 const CC = ["#1fa04a", "#f7c600", "#1e9be9", "#e0302c"];
 // little arrows pointing into each colour's lane: [row, col, glyph]
 const ARROWS = [[7, 0, "→"], [0, 7, "↓"], [7, 14, "←"], [14, 7, "↑"]];
+const START_CORNER = { 0: 0, 13: 1, 26: 2, 39: 3 };
+const CELL_PCT = 100 / 15;
 // p = -1 in base, 0..50 on the ring (from your start), 51..55 your lane, 56 home
 const posOf = (cr, p, i) => (p < 0 ? BASEP[cr][i] : p <= 50 ? RING[(STARTS[cr] + p) % 52] : p <= 55 ? LANE[cr][p - 51] : FINP[cr][i]);
 const rot = (r, c, k) => (k === 0 ? [r, c] : k === 1 ? [14 - c, r] : k === 2 ? [14 - r, 14 - c] : [c, 14 - r]); // k quarter turns counter-clockwise
@@ -161,12 +350,13 @@ const DICE_PIPS = {
 const DICE_CAMERA = { position: [0, 0, 5.8], fov: 30 };
 const DICE_GL = { antialias: true, alpha: true, powerPreference: "high-performance" };
 const DICE_STYLE = { width: "100%", height: "100%" };
+const DICE_DPR = [1, 1.5];
 
 /* Individual pip */
 function DicePip({ position }) {
   return (
     <mesh position={position}>
-      <sphereGeometry args={[0.085, 16, 16]} />
+      <sphereGeometry args={[0.085, 10, 10]} />
       <meshStandardMaterial color="#11151d" roughness={0.35} metalness={0.05} />
     </mesh>
   );
@@ -194,9 +384,9 @@ function RealDice({ value, rolling }) {
   const from = useRef([0, 0, 0]);
   const to = useRef([0, 0, 0]);
   const running = useRef(false);
-  const duration = 0.95;
+  const duration = 0.8;
 
-    useEffect(() => {
+  useEffect(() => {
     if (!ref.current || rolling) return;
     const t0 = DICE_FACE_ROTATIONS[value] || DICE_FACE_ROTATIONS[1];
     ref.current.rotation.set(t0[0], t0[1], t0[2]);
@@ -262,10 +452,11 @@ function RealDice({ value, rolling }) {
   );
 }
 
-/* 3D lighting and camera (no Environment, no shadows, renders only while rolling) */
-function DiceScene({ value, rolling }) {
+/* 3D lighting and camera (no Environment, no shadows, renders only while rolling).
+   memo: the game re-renders a lot, the 3D scene only needs to when value or rolling change */
+const DiceScene = memo(function DiceScene({ value, rolling }) {
   return (
-    <Canvas camera={DICE_CAMERA} dpr={[1, 1.75]} gl={DICE_GL} frameloop="demand" style={DICE_STYLE}>
+    <Canvas camera={DICE_CAMERA} dpr={DICE_DPR} gl={DICE_GL} frameloop="demand" style={DICE_STYLE}>
       <ambientLight intensity={1.0} />
       <directionalLight position={[3, 5, 5]} intensity={2.6} />
       <directionalLight position={[-4, 2, 3]} intensity={1.4} />
@@ -273,11 +464,11 @@ function DiceScene({ value, rolling }) {
       <RealDice value={value} rolling={rolling} />
     </Canvas>
   );
-}
+});
 
 
 /* small flat dice for players who are not rolling */
-function DiceFace2D({ v }) {
+const DiceFace2D = memo(function DiceFace2D({ v }) {
   return (
     <div style={{ position: "absolute", inset: "10%", borderRadius: 8, background: "linear-gradient(145deg,#ffffff,#d9dde4)", boxShadow: "0 2px 4px rgba(0,0,0,.35)", display: "grid", gridTemplateColumns: "repeat(3,1fr)", gridTemplateRows: "repeat(3,1fr)", padding: "12%" }}>
       {Array.from({ length: 9 }).map((_, i) => (
@@ -287,7 +478,7 @@ function DiceFace2D({ v }) {
       ))}
     </div>
   );
-}
+});
 
 
 /* Premium dice component */
@@ -356,7 +547,7 @@ function Die({
           `,
         }}
       >
-                <div style={{ position: "absolute", inset: "-30%", pointerEvents: "none" }}>
+        <div style={{ position: "absolute", inset: "-30%", pointerEvents: "none" }}>
           <DiceScene value={v} rolling={rolling} />
         </div>
       </div>
@@ -445,11 +636,343 @@ function Pin({ color }) {
     </svg>
   );
 }
+const PinM = memo(Pin);
+
+
+/* ---------------- the flat board: drawn once per board rotation, not on every game update ---------------- */
+const BoardSVG = memo(function BoardSVG({ k }) {
+  return (
+    <svg
+      viewBox="0 0 15 15"
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+      }}
+    >
+      <defs>
+
+        {/* premium board background */}
+        <linearGradient id="boardWhite" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="55%" stopColor="#f7f8fa" />
+          <stop offset="100%" stopColor="#e7e9ed" />
+        </linearGradient>
+
+        {/* colored yard gradients */}
+        {[0, 1, 2, 3].map((c) => (
+          <linearGradient
+            key={`yardGrad${c}`}
+            id={`yardGrad${c}`}
+            x1="0"
+            y1="0"
+            x2="1"
+            y2="1"
+          >
+            <stop offset="0%" stopColor={mix(CC[c], 0.22)} />
+            <stop offset="45%" stopColor={CC[c]} />
+            <stop offset="100%" stopColor={mix(CC[c], -0.22)} />
+          </linearGradient>
+        ))}
+
+        {/* lane gradients */}
+        {[0, 1, 2, 3].map((c) => (
+          <linearGradient
+            key={`laneGrad${c}`}
+            id={`laneGrad${c}`}
+            x1="0"
+            y1="0"
+            x2="1"
+            y2="1"
+          >
+            <stop offset="0%" stopColor={mix(CC[c], 0.18)} />
+            <stop offset="100%" stopColor={mix(CC[c], -0.15)} />
+          </linearGradient>
+        ))}
+
+        {/* subtle inner shine */}
+        <linearGradient id="glassShine" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity=".42" />
+          <stop offset="35%" stopColor="#ffffff" stopOpacity=".08" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+        </linearGradient>
+
+      </defs>
+
+      <rect
+        width="15"
+        height="15"
+        rx=".35"
+        fill="url(#boardWhite)"
+      />
+
+      <g transform={k ? `rotate(${-90 * k} 7.5 7.5)` : undefined}>
+
+        {/* =========================
+            FOUR PREMIUM YARDS
+           ========================= */}
+
+        {[0, 1, 2, 3].map((c) => (
+          <g key={`q${c}`}>
+
+            {/* main colored area */}
+            <rect
+              x={CORNER_XY[c][0]}
+              y={CORNER_XY[c][1]}
+              width="6"
+              height="6"
+              fill={`url(#yardGrad${c})`}
+            />
+
+            {/* inner white home panel */}
+            <rect
+              x={CORNER_XY[c][0] + 0.72}
+              y={CORNER_XY[c][1] + 0.72}
+              width="4.56"
+              height="4.56"
+              rx=".5"
+              fill="rgba(255,255,255,.96)"
+              stroke="rgba(255,255,255,.9)"
+              strokeWidth=".06"
+            />
+
+            {/* glass highlight */}
+            <rect
+              x={CORNER_XY[c][0] + 0.82}
+              y={CORNER_XY[c][1] + 0.82}
+              width="4.36"
+              height="1.2"
+              rx=".3"
+              fill="url(#glassShine)"
+              pointerEvents="none"
+            />
+
+            {/* token bases */}
+            {BASEP[c].map(([r, cc], i) => (
+              <g key={i}>
+                {/* outer ring */}
+                <circle
+                  cx={cc + 0.5}
+                  cy={r + 0.5}
+                  r=".72"
+                  fill={mix(CC[c], -0.12)}
+                  opacity=".95"
+                />
+
+                {/* inner glossy base */}
+                <circle
+                  cx={cc + 0.5}
+                  cy={r + 0.5}
+                  r=".62"
+                  fill={`url(#yardGrad${c})`}
+                  stroke="#ffffff"
+                  strokeOpacity=".55"
+                  strokeWidth=".055"
+                />
+
+                {/* base shine */}
+                <ellipse
+                  cx={cc + 0.32}
+                  cy={r + 0.27}
+                  rx=".23"
+                  ry=".12"
+                  fill="#ffffff"
+                  opacity=".32"
+                  transform={`rotate(-25 ${cc + 0.32} ${r + 0.27})`}
+                />
+              </g>
+            ))}
+          </g>
+        ))}
+
+        {/* =========================
+            OUTER RING
+           ========================= */}
+
+        {RING.map(([r, c], i) => {
+          const sc = START_CORNER[i];
+
+          return (
+            <g key={i}>
+
+              <rect
+                x={c}
+                y={r}
+                width="1"
+                height="1"
+                fill={
+                  sc !== undefined
+                    ? `url(#yardGrad${sc})`
+                    : "url(#boardWhite)"
+                }
+                stroke="rgba(30,35,45,.28)"
+                strokeWidth=".035"
+              />
+
+              {/* subtle tile highlight */}
+              <path
+                d={`M ${c + .06} ${r + .08} H ${c + .94}`}
+                stroke="#ffffff"
+                strokeOpacity=".48"
+                strokeWidth=".035"
+              />
+
+              {SAFE.has(i) && (
+                <text
+                  x={c + 0.5}
+                  y={r + 0.74}
+                  textAnchor="middle"
+                  fontSize=".72"
+                  fontWeight="700"
+                  fill={sc !== undefined ? "#fff" : "#8b929c"}
+                  opacity=".95"
+                  transform={
+                    k
+                      ? `rotate(${90 * k} ${c + 0.5} ${r + 0.5})`
+                      : undefined
+                  }
+                >
+                  ★
+                </text>
+              )}
+            </g>
+          );
+        })}
+
+        {/* =========================
+            HOME LANES
+           ========================= */}
+
+        {[0, 1, 2, 3].map((c) =>
+          LANE[c].map(([r, cc], i) => (
+            <g key={`l${c}${i}`}>
+              <rect
+                x={cc}
+                y={r}
+                width="1"
+                height="1"
+                fill={`url(#laneGrad${c})`}
+                stroke="rgba(30,35,45,.28)"
+                strokeWidth=".035"
+              />
+
+              <path
+                d={`M ${cc + .08} ${r + .08} H ${cc + .92}`}
+                stroke="#ffffff"
+                strokeOpacity=".38"
+                strokeWidth=".035"
+              />
+            </g>
+          ))
+        )}
+
+        {/* =========================
+            DIRECTION ARROWS
+           ========================= */}
+
+        {ARROWS.map(([r, c, ch], i) => (
+          <text
+            key={`a${i}`}
+            x={c + 0.5}
+            y={r + 0.74}
+            textAnchor="middle"
+            fontSize=".7"
+            fontWeight="800"
+            fill={CC[i]}
+            opacity=".95"
+            transform={
+              k
+                ? `rotate(${90 * k} ${c + 0.5} ${r + 0.5})`
+                : undefined
+            }
+          >
+            {ch}
+          </text>
+        ))}
+
+        {/* =========================
+            PREMIUM CENTER
+           ========================= */}
+
+        {[0, 1, 2, 3].map((c) => (
+          <polygon
+            key={`t${c}`}
+            points={TRI[c]}
+            fill={`url(#laneGrad${c})`}
+            stroke="rgba(255,255,255,.7)"
+            strokeWidth=".055"
+            strokeLinejoin="round"
+          />
+        ))}
+
+        {/* center highlight */}
+        <circle
+          cx="7.5"
+          cy="7.5"
+          r=".13"
+          fill="#ffffff"
+          opacity=".7"
+        />
+
+      </g>
+    </svg>
+  );
+});
+
+
+/* one token on the board: only re-renders when its own numbers change */
+const Token = memo(function Token({ s, i, col, row, shrink, pick, hop, fin, c, cell, onTap }) {
+  const sc = (fin ? FIN_SC : 1) * shrink;
+  return (
+    <motion.div
+      initial={false}
+      animate={{ x: `${col * 100}%`, y: `${row * 100}%` }}
+      transition={{ x: { type: "spring", stiffness: 520, damping: 36 }, y: { type: "spring", stiffness: 520, damping: 36 } }}
+      onClick={() => onTap(s, i)}
+      style={{ position: "absolute", left: 0, top: 0, width: `${CELL_PCT}%`, height: `${CELL_PCT}%`, cursor: pick ? "pointer" : "default", zIndex: pick ? 6 : hop ? 7 : 3, willChange: "transform" }}
+    >
+      <div style={{ position: "absolute", left: "14%", right: "14%", bottom: "6%", height: "22%", borderRadius: "50%", background: "radial-gradient(ellipse, rgba(0,0,0,.5), transparent 72%)", transform: `scale(${sc})`, pointerEvents: "none" }} />
+      <div style={{ position: "absolute", left: "8%", width: "84%", height: "118%", bottom: "12%", transformOrigin: "50% 100%", transform: `scale(${sc})` }}>
+        <motion.div
+          animate={pick ? { y: [0, -cell * 0.16, 0] } : hop ? { y: [0, -cell * 0.5 - (hop % 2) * 0.02, 0] } : { y: 0 }}
+          transition={pick ? { repeat: Infinity, duration: 0.85, ease: "easeInOut" } : hop ? { duration: 0.15, ease: "easeOut" } : { duration: 0.2 }}
+          style={{ width: "100%", height: "100%", transformOrigin: "50% 100%", filter: pick ? `drop-shadow(0 0 6px ${c})` : "none" }}
+        >
+          <PinM color={c} />
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+});
+
+
+/* speech bubble with a little icon, shown beside the computer that is talking */
+function SledgeBubble({ text, color, left, top, maxW }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.7, y: top ? -6 : 6 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.85 }}
+      transition={{ type: "spring", stiffness: 380, damping: 22 }}
+      style={{
+        position: "absolute", [top ? "top" : "bottom"]: "calc(100% + 6px)", [left ? "left" : "right"]: 0,
+        width: "max-content", maxWidth: maxW, zIndex: 50, pointerEvents: "none",
+        display: "flex", alignItems: "flex-start", gap: 6, flexDirection: left ? "row" : "row-reverse",
+      }}
+    >
+      <div style={{ width: 24, height: 24, flexShrink: 0, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 14, background: "#101b35", border: `2px solid ${color}`, boxShadow: `0 0 8px ${color}99` }}>😈</div>
+      <div style={{ padding: "6px 9px", borderRadius: 12, fontSize: 11, fontWeight: 700, lineHeight: 1.3, color: "#fff", background: "linear-gradient(145deg,#1a2a52,#0b1630)", border: `1.5px solid ${color}`, boxShadow: "0 4px 14px rgba(0,0,0,.55)" }}>
+        {text}
+      </div>
+    </motion.div>
+  );
+}
 
 /* seats: [{ id?, name, bot? }]  (2 to 4).  mySeat: your index online / vs computer, -1 on one phone */
 export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level, net, onFinish, lc, opt: optIn }) {
   const opt = optIn || {};
-  const { TurnBar, LastLine, Warn, useWarn, GC, fmt } = kit;
+  const { LastLine, Warn, useWarn, GC, fmt } = kit;
   const L = LT[lang] || LT.en;
   const [wn, warn, shake] = useWarn();
   const n = seats.length;
@@ -483,6 +1006,7 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
   const iDrive = (s) => isBot(s) && (cpu || amHost); // who plays for a computer seat
   const mine = (s) => local || (s === mySeat && !isBot(s));
   const nameOf = (s) => (seatsRef.current[s] ? seatsRef.current[s].name : "");
+  const human = (s) => cpu && s === me; // the real player when playing vs computer
 
   // a short burst on a square (capture, reaching home)
   const addFx = (pos, color) => {
@@ -493,10 +1017,30 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
     setTimeout(() => { if (!alive.current) return; G.current.fx = G.current.fx.filter((f) => f.id !== id); re(); }, 950);
   };
 
+  // computer commentary (only vs computer): a random computer roasts you, shown as a bubble beside its own corner.
+  // cat = which kind of line, speaker = seat that caused the event, p = chance it speaks
+  const say = (cat, speaker, p = 1) => {
+    if (!cpu || Math.random() > p) return;
+    const arr = (CM[lang] || CM.en)[cat];
+    if (!arr) return;
+    let sp = speaker;
+    if (sp === undefined || sp === null || !isBot(sp)) {
+      const bots = seatsRef.current.map((s, i) => (s.bot ? i : -1)).filter((i) => i >= 0);
+      if (!bots.length) return;
+      sp = bots[Math.floor(Math.random() * bots.length)];
+    }
+    const g = G.current;
+    const id = (g.cmId || 0) + 1;
+    g.cmId = id;
+    g.cm = { s: sp, text: arr[Math.floor(Math.random() * arr.length)], id };
+    re();
+    setTimeout(() => { if (!alive.current) return; const gg = G.current; if (gg.cmId === id) { gg.cm = null; re(); } }, 4000);
+  };
+
   /* ----- the game flow (runs the same on every phone) ----- */
   const endTurn = (extra) => {
     const g = G.current;
-    if (!extra) g.turn = (g.turn + 1) % n;
+    if (!extra) { g.turn = (g.turn + 1) % n; g.sixes = 0; }
     g.phase = "roll"; g.movable = []; g.msg = "";
     re();
     fn.current.drain();
@@ -504,14 +1048,30 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
   const doRoll = (d, fromNet) => run(async () => {
     const g = G.current;
     if (g.phase !== "roll" || g.over) return;
-        g.phase = "rolling"; g.dice = d; (g.ld = g.ld || [])[g.turn] = d; g.msg = ""; g.rollN += 1; re();
+    g.phase = "rolling"; g.dice = d; (g.ld = g.ld || [])[g.turn] = d; g.msg = ""; g.rollN += 1; re();
     if (online && !fromNet) net.send({ t: "ld", d });
-    await nap(1000);
+    await nap(850);
     const who = g.turn;
+    const prev = g.sixes || 0;
+    g.sixes = d === 6 ? prev + 1 : 0;
+    if (d === 6 && prev === 0) g.snap = g.tok.map((a) => [...a]); // board before the first 6 of the chain
+    if (opt.threeSixes !== false && g.sixes >= 3) {
+      g.sixes = 0;
+      if (g.snap) g.tok = g.snap; // undo the moves made with the earlier 6s
+      g.snap = null;
+      g.movable = [];
+      g.last = { who, d, out: false, cap: 0, home: false };
+      g.phase = "pass"; g.msg = "threeSix"; re();
+      if (human(who)) say("threeSix");
+      await nap(1300);
+      endTurn(true); // same player rolls again
+      return;
+    }
     const mv = movablesOf(g.tok[who], d);
     g.movable = mv;
     g.last = { who, d, out: false, cap: 0, home: false };
-    if (!mv.length) { g.phase = "pass"; g.msg = "nomove"; re(); await nap(1200); endTurn(false); return; }
+    if (!mv.length) { g.phase = "pass"; g.msg = "nomove"; re(); say(human(who) ? "humanMiss" : "botMiss", who, 0.7); await nap(900); endTurn(false); return; }
+    if (d === 6) say(human(who) ? "humanSix" : "botSix", who, 0.7);
     if (mv.length === 1) { g.phase = "auto"; re(); await nap(450); await playMove(mv[0]); return; }
     g.phase = "move"; re();
     fn.current.drain();
@@ -530,16 +1090,16 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
       g.tok = g.tok.map((a, s) => (s === who ? a.map((v, j) => (j === i ? pp : v)) : a));
       g.hop = { s: who, i, n: ++g.hn };
       re();
-      await nap(200);
+      await nap(150);
     }
     g.hop = null;
-    let cap = 0;
+    let cap = 0, hitMe = false;
     if (p <= 50) {
       const idx = (STARTS[cor[who]] + p) % 52;
-            if (opt.safeStars === false || !SAFE.has(idx)) {
+      if (opt.safeStars === false || !SAFE.has(idx)) {
         g.tok = g.tok.map((a, s) =>
           s === who ? a : a.map((v) => {
-            if (v >= 0 && v <= 50 && (STARTS[cor[s]] + v) % 52 === idx) { cap += 1; return -1; }
+            if (v >= 0 && v <= 50 && (STARTS[cor[s]] + v) % 52 === idx) { cap += 1; if (human(s)) hitMe = true; return -1; }
             return v;
           }));
       }
@@ -549,14 +1109,18 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
     if (home) addFx([7.5, 7.5], COLS[who]);
     g.last = { who, d, out: from === -1, cap, home };
     re();
-    if (cap) await nap(650);
-    if (g.tok[who].every((v) => v === 56)) {
+    const wonNow = g.tok[who].every((v) => v === 56);
+    if (wonNow) say(human(who) ? "humanWin" : "botWin", who);
+    else if (cap) { if (human(who)) say("humanCapture", who); else if (hitMe) say("botCapture", who); }
+    else if (home) say(human(who) ? "humanHome" : "botHome", who);
+    if (cap) await nap(500);
+    if (wonNow) {
       g.over = true; g.phase = "over"; re();
       await nap(1400);
       onFinish(who);
       return;
     }
-        endTurn((d === 6 && opt.sixExtra !== false) || (cap > 0 && opt.captureExtra !== false) || (home && opt.homeExtra !== false));
+    endTurn((d === 6 && opt.sixExtra !== false) || (cap > 0 && opt.captureExtra !== false) || (home && opt.homeExtra !== false));
   });
   // messages from friends wait here until this phone is ready for them (and only the right sender is accepted)
   fn.current.drain = () => {
@@ -589,7 +1153,7 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
   useEffect(() => {
     if (!driving) return undefined;
     let t = 0;
-       const wait = Number(lc && lc.delay) || 750;
+    const wait = Number(lc && lc.delay) || 600;
     const brain = cpu ? (lc && lc.bot) || level : opt.dropBot || "medium"; // dropBot: the computer that replaces a friend who left
     if (g.phase === "roll") t = setTimeout(() => doRoll(1 + Math.floor(Math.random() * 6), false), wait);
     else if (g.phase === "move") {
@@ -629,6 +1193,10 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
     if (online) net.send({ t: "lm", i });
     playMove(i);
   };
+  // a stable handler for the memoised tokens (always calls the latest tapToken)
+  const tapRef = useRef(tapToken);
+  tapRef.current = tapToken;
+  const onTap = useCallback((s, i) => tapRef.current(s, i), []);
 
   /* ----- drawing ----- */
   const viewSeat = online ? Math.max(0, mySeat) : cpu ? me : 0;
@@ -639,9 +1207,9 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
   const cell = bd / 15;
   const seatAt = {};
   cor.forEach((c, s) => { seatAt[c] = s; });
-  const cellPct = 100 / 15;
+  const cellPct = CELL_PCT;
 
-    // which player sits in which corner of YOUR screen: 0 top-left, 1 top-right, 2 bottom-right, 3 bottom-left
+  // which player sits in which corner of YOUR screen: 0 top-left, 1 top-right, 2 bottom-right, 3 bottom-left
   const seatAtV = {};
   cor.forEach((c, s) => { seatAtV[(c - k + 4) % 4] = s; });
   const diceBox = Math.max(38, Math.min(54, Math.floor(size * 0.115)));
@@ -653,33 +1221,38 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
     const val = (g.ld && g.ld[s]) || 1;
     const left = v === 0 || v === 3;
     const pulse = active && canRoll;
+    const talking = cpu && g.cm && g.cm.s === s ? g.cm : null;
     return (
-      <motion.div
-        key={v}
-        animate={pulse ? { scale: [1, 1.06, 1] } : { scale: 1 }}
-        transition={pulse ? { repeat: Infinity, duration: 1.1, ease: "easeInOut" } : { duration: 0.2 }}
-        style={{
-          display: "flex", flexDirection: left ? "row" : "row-reverse", alignItems: "center", gap: 4, padding: 3, borderRadius: 10,
-          background: "linear-gradient(145deg,#1a4a9a,#0b2a66)",
-          border: `2px solid ${active ? "#f7d56a" : "rgba(247,213,106,.3)"}`,
-          boxShadow: active ? `0 0 12px ${col}, 0 0 0 1px ${col}` : "none",
-          opacity: active ? 1 : 0.75, transition: "opacity .3s, border-color .3s",
-        }}
-      >
-        <div style={{ width: diceBox * 0.5, height: diceBox * 0.66 }}><Pin color={col} /></div>
-        <div
-          onClick={active ? tapDice : undefined}
-          style={{ position: "relative", width: diceBox, height: diceBox, borderRadius: 8, background: "linear-gradient(145deg,#f8dede,#e0b2b2)", cursor: pulse ? "pointer" : "default", WebkitTapHighlightColor: "transparent" }}
+      <div key={v} style={{ position: "relative" }}>
+        <motion.div
+          animate={pulse ? { scale: [1, 1.06, 1] } : { scale: 1 }}
+          transition={pulse ? { repeat: Infinity, duration: 1.1, ease: "easeInOut" } : { duration: 0.2 }}
+          style={{
+            display: "flex", flexDirection: left ? "row" : "row-reverse", alignItems: "center", gap: 4, padding: 3, borderRadius: 10,
+            background: "linear-gradient(145deg,#1a4a9a,#0b2a66)",
+            border: `2px solid ${active ? "#f7d56a" : "rgba(247,213,106,.3)"}`,
+            boxShadow: active ? `0 0 12px ${col}, 0 0 0 1px ${col}` : "none",
+            opacity: active ? 1 : 0.75, transition: "opacity .3s, border-color .3s",
+          }}
         >
-          {active ? (
-            <div style={{ position: "absolute", inset: "-25%", pointerEvents: "none" }}>
-              <DiceScene value={val} rolling={rolling} />
-            </div>
-          ) : (
-            <DiceFace2D v={val} />
-          )}
-        </div>
-      </motion.div>
+          <div style={{ width: diceBox * 0.5, height: diceBox * 0.66 }}><PinM color={col} /></div>
+          <div
+            onClick={active ? tapDice : undefined}
+            style={{ position: "relative", width: diceBox, height: diceBox, borderRadius: 8, background: "linear-gradient(145deg,#f8dede,#e0b2b2)", cursor: pulse ? "pointer" : "default", WebkitTapHighlightColor: "transparent" }}
+          >
+            {active ? (
+              <div style={{ position: "absolute", inset: "-25%", pointerEvents: "none" }}>
+                <DiceScene value={val} rolling={rolling} />
+              </div>
+            ) : (
+              <DiceFace2D v={val} />
+            )}
+          </div>
+        </motion.div>
+        <AnimatePresence>
+          {talking ? <SledgeBubble key={talking.id} text={talking.text} color={col} left={left} top={v < 2} maxW={Math.min(210, Math.floor(size * 0.6))} /> : null}
+        </AnimatePresence>
+      </div>
     );
   };
 
@@ -695,9 +1268,6 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
   });
   list.sort((a, b) => a.row - b.row);
 
-  const players = seats.map((s, i) => ({
-    name: s.name, color: COLS[i], score: g.tok[i].filter((p) => p === 56).length, you: i === mySeat && !local, sub: s.bot ? "🤖" : undefined,
-  }));
   const turnColor = g.over ? GC : COLS[g.turn];
   const shown = g.dice || 1;
   const status = !ready ? L.pickColorFirst
@@ -705,11 +1275,10 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
     : g.phase === "roll" ? (canRoll ? L.roll : fmt(S.racing, { name: nameOf(g.turn) }))
     : g.phase === "rolling" ? L.rolling
     : g.phase === "move" ? (canPick ? L.pickToken : fmt(S.racing, { name: nameOf(g.turn) }))
-    : g.phase === "pass" ? L.noMove : "";
+    : g.phase === "pass" ? (g.msg === "threeSix" ? L.threeSix : L.noMove) : "";
   const lastTxt = g.last
-    ? [fmt(L.rolled, { d: g.last.d }), g.msg === "nomove" ? L.nomove : "", g.last.out ? L.out : "", g.last.cap ? L.captured : "", g.last.home ? L.home : ""].filter(Boolean).join(" · ")
+    ? [fmt(L.rolled, { d: g.last.d }), g.msg === "nomove" ? L.nomove : g.msg === "threeSix" ? L.threeSix : "", g.last.out ? L.out : "", g.last.cap ? L.captured : "", g.last.home ? L.home : ""].filter(Boolean).join(" · ")
     : "";
-  const startCorner = { 0: 0, 13: 1, 26: 2, 39: 3 };
   // where each movable token would land: tappable markers (tap the token or its marker)
   const ghosts = canPick
     ? g.movable.map((i) => {
@@ -724,12 +1293,11 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
     <div className="flex w-full flex-col items-center">
       <LudoDefs cols={COLS} />
       <div className="w-full max-w-[440px]">
-        <TurnBar players={players} turn={g.over ? -1 : g.turn} S={S} local={local} over={g.over} />
         {g.last ? <LastLine S={S} name={nameOf(g.last.who)} color={COLS[g.last.who]}>{lastTxt}</LastLine> : <div className="min-h-[30px]" />}
         <Warn w={wn} />
       </div>
 
-            <div className="mx-auto flex items-center justify-between" style={{ width: size, marginTop: 6 }}>
+      <div className="mx-auto flex items-center justify-between" style={{ width: size, marginTop: 6 }}>
         {chip(0)}{chip(1)}
       </div>
 
@@ -738,397 +1306,50 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
           <div className="relative mx-auto" style={{ width: size, height: size, marginTop: 6 }}>
             <div
               style={{
-  position: "absolute",
-  inset: 0,
-  boxSizing: "border-box",
-  padding: PADF,
-  borderRadius: 20,
+                position: "absolute",
+                inset: 0,
+                boxSizing: "border-box",
+                padding: PADF,
+                borderRadius: 20,
 
-  background: `
-    linear-gradient(
-      145deg,
-      #243f72 0%,
-      #101b35 42%,
-      #07101f 100%
-    )
-  `,
+                background: `
+                  linear-gradient(
+                    145deg,
+                    #243f72 0%,
+                    #101b35 42%,
+                    #07101f 100%
+                  )
+                `,
 
-  border: "1px solid rgba(255,255,255,.16)",
+                border: "1px solid rgba(255,255,255,.16)",
 
-  boxShadow: `
-    0 0 0 1px rgba(255,255,255,.08),
-    0 0 0 2px ${turnColor}66,
-    0 0 32px ${turnColor}44,
-    0 16px 38px rgba(0,0,0,.58),
-    inset 0 1px 0 rgba(255,255,255,.18)
-  `,
+                boxShadow: `
+                  0 0 0 1px rgba(255,255,255,.08),
+                  0 0 0 2px ${turnColor}66,
+                  0 0 32px ${turnColor}44,
+                  0 16px 38px rgba(0,0,0,.58),
+                  inset 0 1px 0 rgba(255,255,255,.18)
+                `,
 
-  transition: "box-shadow .45s ease",
-}}
+                transition: "box-shadow .45s ease",
+              }}
             >
               <div style={{
-  position: "relative",
-  width: bd,
-  height: bd,
-  borderRadius: 10,
-  overflow: "hidden",
-  background:
-    "linear-gradient(145deg,#ffffff,#e9ecf1)",
-  boxShadow: `
-    inset 0 0 0 1px rgba(255,255,255,.9),
-    inset 0 0 18px rgba(0,0,0,.08),
-    0 2px 8px rgba(0,0,0,.28)
-  `,
-}}>
+                position: "relative",
+                width: bd,
+                height: bd,
+                borderRadius: 10,
+                overflow: "hidden",
+                background:
+                  "linear-gradient(145deg,#ffffff,#e9ecf1)",
+                boxShadow: `
+                  inset 0 0 0 1px rgba(255,255,255,.9),
+                  inset 0 0 18px rgba(0,0,0,.08),
+                  0 2px 8px rgba(0,0,0,.28)
+                `,
+              }}>
                 {/* the flat board */}
-                <svg
-  viewBox="0 0 15 15"
-  style={{
-    position: "absolute",
-    inset: 0,
-    width: "100%",
-    height: "100%",
-  }}
->
-  <defs>
-
-    {/* premium board background */}
-    <linearGradient id="boardWhite" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stopColor="#ffffff" />
-      <stop offset="55%" stopColor="#f7f8fa" />
-      <stop offset="100%" stopColor="#e7e9ed" />
-    </linearGradient>
-
-    {/* colored yard gradients */}
-    {[0, 1, 2, 3].map((c) => (
-      <linearGradient
-        key={`yardGrad${c}`}
-        id={`yardGrad${c}`}
-        x1="0"
-        y1="0"
-        x2="1"
-        y2="1"
-      >
-        <stop offset="0%" stopColor={mix(CC[c], 0.22)} />
-        <stop offset="45%" stopColor={CC[c]} />
-        <stop offset="100%" stopColor={mix(CC[c], -0.22)} />
-      </linearGradient>
-    ))}
-
-    {/* lane gradients */}
-    {[0, 1, 2, 3].map((c) => (
-      <linearGradient
-        key={`laneGrad${c}`}
-        id={`laneGrad${c}`}
-        x1="0"
-        y1="0"
-        x2="1"
-        y2="1"
-      >
-        <stop offset="0%" stopColor={mix(CC[c], 0.18)} />
-        <stop offset="100%" stopColor={mix(CC[c], -0.15)} />
-      </linearGradient>
-    ))}
-
-    {/* tile shadow */}
-    <filter
-      id="tileShadow"
-      x="-30%"
-      y="-30%"
-      width="160%"
-      height="160%"
-    >
-      <feDropShadow
-        dx="0"
-        dy=".045"
-        stdDeviation=".055"
-        floodColor="#000000"
-        floodOpacity=".22"
-      />
-    </filter>
-
-    {/* yard shadow */}
-    <filter
-      id="yardShadow"
-      x="-20%"
-      y="-20%"
-      width="140%"
-      height="140%"
-    >
-      <feDropShadow
-        dx="0"
-        dy=".08"
-        stdDeviation=".08"
-        floodColor="#000000"
-        floodOpacity=".28"
-      />
-    </filter>
-
-    {/* subtle inner shine */}
-    <linearGradient id="glassShine" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#ffffff" stopOpacity=".42" />
-      <stop offset="35%" stopColor="#ffffff" stopOpacity=".08" />
-      <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-    </linearGradient>
-
-  </defs>
-
-  <rect
-    width="15"
-    height="15"
-    rx=".35"
-    fill="url(#boardWhite)"
-  />
-
-  <g transform={k ? `rotate(${-90 * k} 7.5 7.5)` : undefined}>
-
-    {/* =========================
-        FOUR PREMIUM YARDS
-       ========================= */}
-
-    {[0, 1, 2, 3].map((c) => (
-      <g key={`q${c}`}>
-
-        {/* main colored area */}
-        <rect
-          x={CORNER_XY[c][0]}
-          y={CORNER_XY[c][1]}
-          width="6"
-          height="6"
-          fill={`url(#yardGrad${c})`}
-        />
-
-        {/* inner white home panel */}
-        <rect
-          x={CORNER_XY[c][0] + 0.72}
-          y={CORNER_XY[c][1] + 0.72}
-          width="4.56"
-          height="4.56"
-          rx=".5"
-          fill="rgba(255,255,255,.96)"
-          stroke="rgba(255,255,255,.9)"
-          strokeWidth=".06"
-          filter="url(#yardShadow)"
-        />
-
-        {/* glass highlight */}
-        <rect
-          x={CORNER_XY[c][0] + 0.82}
-          y={CORNER_XY[c][1] + 0.82}
-          width="4.36"
-          height="1.2"
-          rx=".3"
-          fill="url(#glassShine)"
-          pointerEvents="none"
-        />
-
-        {/* token bases */}
-        {BASEP[c].map(([r, cc], i) => (
-          <g key={i}>
-            {/* outer ring */}
-            <circle
-              cx={cc + 0.5}
-              cy={r + 0.5}
-              r=".72"
-              fill={mix(CC[c], -0.12)}
-              opacity=".95"
-            />
-
-            {/* inner glossy base */}
-            <circle
-              cx={cc + 0.5}
-              cy={r + 0.5}
-              r=".62"
-              fill={`url(#yardGrad${c})`}
-              stroke="#ffffff"
-              strokeOpacity=".55"
-              strokeWidth=".055"
-            />
-
-            {/* base shine */}
-            <ellipse
-              cx={cc + 0.32}
-              cy={r + 0.27}
-              rx=".23"
-              ry=".12"
-              fill="#ffffff"
-              opacity=".32"
-              transform={`rotate(-25 ${cc + 0.32} ${r + 0.27})`}
-            />
-          </g>
-        ))}
-      </g>
-    ))}
-
-    {/* =========================
-        OUTER RING
-       ========================= */}
-
-    {RING.map(([r, c], i) => {
-      const sc = startCorner[i];
-      const bg = sc !== undefined ? CC[sc] : "#ffffff";
-
-      return (
-        <g key={i}>
-
-          <rect
-            x={c}
-            y={r}
-            width="1"
-            height="1"
-            fill={
-              sc !== undefined
-                ? `url(#yardGrad${sc})`
-                : "url(#boardWhite)"
-            }
-            stroke="rgba(30,35,45,.28)"
-            strokeWidth=".035"
-            filter="url(#tileShadow)"
-          />
-
-          {/* subtle tile highlight */}
-          <path
-            d={`M ${c + .06} ${r + .08} H ${c + .94}`}
-            stroke="#ffffff"
-            strokeOpacity=".48"
-            strokeWidth=".035"
-          />
-
-          {SAFE.has(i) && (
-            <text
-              x={c + 0.5}
-              y={r + 0.74}
-              textAnchor="middle"
-              fontSize=".72"
-              fontWeight="700"
-              fill={sc !== undefined ? "#fff" : "#8b929c"}
-              opacity=".95"
-              transform={
-                k
-                  ? `rotate(${90 * k} ${c + 0.5} ${r + 0.5})`
-                  : undefined
-              }
-            >
-              ★
-            </text>
-          )}
-        </g>
-      );
-    })}
-
-    {/* =========================
-        HOME LANES
-       ========================= */}
-
-    {[0, 1, 2, 3].map((c) =>
-      LANE[c].map(([r, cc], i) => (
-        <g key={`l${c}${i}`}>
-          <rect
-            x={cc}
-            y={r}
-            width="1"
-            height="1"
-            fill={`url(#laneGrad${c})`}
-            stroke="rgba(30,35,45,.28)"
-            strokeWidth=".035"
-            filter="url(#tileShadow)"
-          />
-
-          <path
-            d={`M ${cc + .08} ${r + .08} H ${cc + .92}`}
-            stroke="#ffffff"
-            strokeOpacity=".38"
-            strokeWidth=".035"
-          />
-        </g>
-      ))
-    )}
-
-    {/* =========================
-        DIRECTION ARROWS
-       ========================= */}
-
-    {ARROWS.map(([r, c, ch], i) => (
-      <text
-        key={`a${i}`}
-        x={c + 0.5}
-        y={r + 0.74}
-        textAnchor="middle"
-        fontSize=".7"
-        fontWeight="800"
-        fill={CC[i]}
-        opacity=".95"
-        transform={
-          k
-            ? `rotate(${90 * k} ${c + 0.5} ${r + 0.5})`
-            : undefined
-        }
-      >
-        {ch}
-      </text>
-    ))}
-
-    {/* =========================
-        PREMIUM CENTER
-       ========================= */}
-
-    {[0, 1, 2, 3].map((c) => (
-      <polygon
-        key={`t${c}`}
-        points={TRI[c]}
-        fill={`url(#laneGrad${c})`}
-        stroke="rgba(255,255,255,.7)"
-        strokeWidth=".055"
-        strokeLinejoin="round"
-        filter="url(#tileShadow)"
-      />
-    ))}
-
-    {/* center highlight */}
-    <circle
-      cx="7.5"
-      cy="7.5"
-      r=".13"
-      fill="#ffffff"
-      opacity=".7"
-    />
-
-    {/* =========================
-        ACTIVE PLAYER GLOW
-       ========================= */}
-
-    {ready && !g.over && (
-      <motion.rect
-        key={`act${g.turn}`}
-        x={CORNER_XY[cor[g.turn]][0] + 0.9}
-        y={CORNER_XY[cor[g.turn]][1] + 0.9}
-        width="4.2"
-        height="4.2"
-        rx=".5"
-        fill="#fff"
-        stroke={COLS[g.turn]}
-        strokeWidth=".12"
-        initial={{
-          fillOpacity: 0,
-          strokeOpacity: 0.25,
-        }}
-        animate={{
-          fillOpacity: [0, 0.16, 0],
-          strokeOpacity: [0.3, 1, 0.3],
-        }}
-        transition={{
-          repeat: Infinity,
-          duration: 1.5,
-          ease: "easeInOut",
-        }}
-        style={{
-          pointerEvents: "none",
-        }}
-      />
-    )}
-
-  </g>
-</svg>
+                <BoardSVG k={k} />
 
                 {/* where the glowing tokens can land: tap the marker or the token */}
                 <div style={{ position: "absolute", inset: 0 }}>
@@ -1147,37 +1368,26 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
 
                 {/* the tokens */}
                 <div style={{ position: "absolute", inset: 0 }}>
-                  {list.map((t) => {
-                    const pick = canPick && t.s === g.turn && g.movable.includes(t.i);
-                    const c = COLS[t.s];
-                    const fin = t.p === 56;
-                    const hop = g.hop && g.hop.s === t.s && g.hop.i === t.i ? g.hop.n : 0;
-                    const sc = (fin ? 0.7 : 1) * t.shrink;
-                    return (
-                      <motion.div
-                        key={`${t.s}-${t.i}`} initial={false}
-                        animate={{ x: `${t.col * 100}%`, y: `${t.row * 100}%` }}
-                        transition={{ x: { type: "spring", stiffness: 420, damping: 34 }, y: { type: "spring", stiffness: 420, damping: 34 } }}
-                        onClick={() => tapToken(t.s, t.i)}
-                        style={{ position: "absolute", left: 0, top: 0, width: `${cellPct}%`, height: `${cellPct}%`, cursor: pick ? "pointer" : "default", zIndex: pick ? 6 : hop ? 7 : 3 }}
-                      >
-                        <div style={{ position: "absolute", left: "14%", right: "14%", bottom: "6%", height: "22%", borderRadius: "50%", background: "radial-gradient(ellipse, rgba(0,0,0,.5), transparent 72%)", transform: `scale(${sc})`, pointerEvents: "none" }} />
-                        <div style={{ position: "absolute", left: "8%", width: "84%", height: "118%", bottom: "12%", transformOrigin: "50% 100%", transform: `scale(${sc})` }}>
-                          <motion.div
-                            animate={pick ? { y: [0, -cell * 0.16, 0] } : hop ? { y: [0, -cell * 0.5 - (hop % 2) * 0.02, 0] } : { y: 0 }}
-                            transition={pick ? { repeat: Infinity, duration: 0.85, ease: "easeInOut" } : hop ? { duration: 0.2, ease: "easeOut" } : { duration: 0.2 }}
-                            style={{ width: "100%", height: "100%", transformOrigin: "50% 100%", filter: pick ? `drop-shadow(0 0 7px ${c}) drop-shadow(0 0 2px #fff)` : "none" }}
-                          >
-                            <Pin s={t.s} color={c} />
-                          </motion.div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
+                  {list.map((t) => (
+                    <Token
+                      key={`${t.s}-${t.i}`}
+                      s={t.s}
+                      i={t.i}
+                      col={t.col}
+                      row={t.row}
+                      shrink={t.shrink}
+                      pick={canPick && t.s === g.turn && g.movable.includes(t.i)}
+                      hop={g.hop && g.hop.s === t.s && g.hop.i === t.i ? g.hop.n : 0}
+                      fin={t.p === 56}
+                      c={COLS[t.s]}
+                      cell={cell}
+                      onTap={onTap}
+                    />
+                  ))}
                 </div>
 
 
-                                {/* player names, small, inside the coloured yard border */}
+                {/* player names, small, inside the coloured yard border */}
                 <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 5 }}>
                   {cor.map((c, s) => {
                     const v = (c - k + 4) % 4;
@@ -1253,11 +1463,11 @@ export default function LudoGame({ kit, ui, lang, S, role, seats, mySeat, level,
         </div>
       </motion.div>
 
-     
+
       <div className="mx-auto flex items-center justify-between" style={{ width: size, marginTop: 10 }}>
         {chip(3)}{chip(2)}
       </div>
       <p className="mt-2 text-center text-[10px] font-semibold" style={{ color: "#ffffffaa" }}>{status}</p>
-</div>
+    </div>
   );
 }
