@@ -688,7 +688,7 @@ export default function PoolGame({ kit, ui, lang, S, role, names, level, net, on
       const sp = freeSpot(x.balls, HEAD, W / 2);
       cue.on = true; cue.sink = null; cue.x = sp.x; cue.y = sp.y; cue.px = sp.x; cue.py = sp.y; cue.vx = 0; cue.vy = 0; cue.dirty = true;
     }
-        if (info.over) {
+                if (info.over) {
       x.over = true; x.winner = info.winner; x.phase = "over";
       const wn2 = info.winner === 1 ? "host" : "guest";
       clearTimeout(endT.current);

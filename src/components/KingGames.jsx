@@ -1759,8 +1759,10 @@ function SoloCpu({ game, T, lang, S, lcfg, opt, level, nick, n, side, onWin, onE
       : null;
     const sd = game === "pool" ? 1 : side;
   const names = sd === 2 ? { host: S.computer, guest: me } : { host: me, guest: S.computer };
-  const fin = (w) => {
+    const fin = (w) => {
     const won = game === "ludo" ? w === 0 : w === (sd === 2 ? "guest" : "host");
+    if (won) onWin();
+    else setEnd(w === "draw" ? "draw" : "lose");
   };
   return (
     <div>
