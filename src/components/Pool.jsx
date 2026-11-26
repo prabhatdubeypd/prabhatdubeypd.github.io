@@ -481,53 +481,55 @@ function buildTable(k, th) {
 }
 
 /* =====================  small UI pieces  ===================== */
-function MiniBall({ id }) {
+function MiniBall({ id, size = 20 }) {
   const col = colOf(id), stripe = id > 8;
   return (
     <span
       style={{
-        width: 20, height: 20, borderRadius: "50%", display: "inline-grid", placeItems: "center", flexShrink: 0,
+        width: size, height: size, borderRadius: "50%", display: "inline-grid", placeItems: "center", flexShrink: 0,
         background: stripe ? `linear-gradient(180deg,#f6f2e8 0 24%,${col} 24% 76%,#f6f2e8 76%)` : col,
         boxShadow: "inset -2px -3px 5px rgba(0,0,0,.5), inset 2px 2px 3px rgba(255,255,255,.45), 0 1px 3px rgba(0,0,0,.6)",
       }}
     >
-      <i style={{ width: 10, height: 10, borderRadius: "50%", background: "#faf8f0", display: "grid", placeItems: "center", fontStyle: "normal", fontSize: 7, fontWeight: 800, color: "#111" }}>{id}</i>
+      <i style={{ width: size * 0.5, height: size * 0.5, borderRadius: "50%", background: "#faf8f0", display: "grid", placeItems: "center", fontStyle: "normal", fontSize: Math.max(5, size * 0.35), fontWeight: 800, color: "#111" }}>{id}</i>
     </span>
   );
 }
-const EmptySlot = () => <span style={{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0, background: "radial-gradient(circle at 50% 40%,#1a1d24,#07080b)", boxShadow: "inset 0 2px 4px rgba(0,0,0,.9), 0 0 0 1px rgba(255,255,255,.08)" }} />;
 
-function Avatar({ name, color, active }) {
+  const EmptySlot = ({ size = 20 }) => <span style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, background: "radial-gradient(circle at 50% 40%,#1a1d24,#07080b)", boxShadow: "inset 0 2px 4px rgba(0,0,0,.9), 0 0 0 1px rgba(255,255,255,.08)" }} />;
+
+function Avatar({ name, color, active, size = 40 }) {
   return (
     <motion.div
       animate={active ? { boxShadow: [`0 0 0 3px ${color}, 0 0 8px ${color}`, `0 0 0 3px ${color}, 0 0 22px ${color}`, `0 0 0 3px ${color}, 0 0 8px ${color}`] } : { boxShadow: "0 0 0 2px rgba(255,255,255,.22)" }}
       transition={active ? { repeat: Infinity, duration: 1.5 } : { duration: 0.3 }}
-      style={{ width: 40, height: 40, borderRadius: 11, position: "relative", flexShrink: 0, background: "linear-gradient(160deg,#79ccff,#2f86de)", overflow: "hidden", opacity: active ? 1 : 0.8 }}
+      style={{ width: size, height: size, borderRadius: size * 0.27, position: "relative", flexShrink: 0, background: "linear-gradient(160deg,#79ccff,#2f86de)", overflow: "hidden", opacity: active ? 1 : 0.8 }}
     >
-      <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
+      <svg viewBox="0 0 40 40" width={size} height={size} aria-hidden="true">
         <circle cx="20" cy="15" r="7.5" fill="#0d4aa0" /><path d="M5 40 C6 28 12 24 20 24 C28 24 34 28 35 40 Z" fill="#0d4aa0" />
       </svg>
-      <span style={{ position: "absolute", right: 1, bottom: 1, width: 16, height: 16, borderRadius: "50%", display: "grid", placeItems: "center", background: GOLD, color: "#3b2506", fontSize: 9, fontWeight: 800 }}>
+      <span style={{ position: "absolute", right: 1, bottom: 1, width: size * 0.4, height: size * 0.4, borderRadius: "50%", display: "grid", placeItems: "center", background: GOLD, color: "#3b2506", fontSize: size * 0.225, fontWeight: 800 }}>
         {(name || "?").slice(0, 1).toUpperCase()}
       </span>
     </motion.div>
   );
 }
-const RackIcon = () => (
-  <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, background: "linear-gradient(160deg,#20242d,#0b0d12)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.14)", display: "grid", placeItems: "center" }}>
-    <svg viewBox="0 0 38 38" width="30" height="30" aria-hidden="true">
+const RackIcon = ({ size = 38 }) => (
+  <div style={{ width: size, height: size, borderRadius: 10, flexShrink: 0, background: "linear-gradient(160deg,#20242d,#0b0d12)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.14)", display: "grid", placeItems: "center" }}>
+    <svg viewBox="0 0 38 38" width={size * 0.79} height={size * 0.79} aria-hidden="true">
       <circle cx="14" cy="16" r="7" fill="#f2711c" /><circle cx="25" cy="15" r="7" fill="#e03131" /><circle cx="18" cy="26" r="7" fill="#1f8a4c" />
       <circle cx="12" cy="13.5" r="2" fill="rgba(255,255,255,.55)" /><circle cx="23" cy="12.5" r="2" fill="rgba(255,255,255,.55)" /><circle cx="16" cy="23.5" r="2" fill="rgba(255,255,255,.55)" />
     </svg>
   </div>
 );
-function SpinBall({ spin, onClick, enabled }) {
+function SpinBall({ spin, onClick, enabled, size = 42 }) {
+  const o = size * 0.31, d = Math.round(size * 0.21);
   return (
     <motion.button
       type="button" onClick={onClick} whileTap={{ scale: 0.92 }} aria-label="Spin"
-      style={{ width: 42, height: 42, borderRadius: "50%", position: "relative", flexShrink: 0, opacity: enabled ? 1 : 0.55, background: "radial-gradient(circle at 35% 30%,#fff,#dcd6c6 65%,#8f8878)", boxShadow: "0 0 0 2px rgba(255,255,255,.35), 0 4px 10px rgba(0,0,0,.55)" }}
+      style={{ width: size, height: size, borderRadius: "50%", position: "relative", flexShrink: 0, opacity: enabled ? 1 : 0.55, background: "radial-gradient(circle at 35% 30%,#fff,#dcd6c6 65%,#8f8878)", boxShadow: "0 0 0 2px rgba(255,255,255,.35), 0 4px 10px rgba(0,0,0,.55)" }}
     >
-      <i style={{ position: "absolute", left: `calc(50% + ${spin.x * 13}px - 4.5px)`, top: `calc(50% - ${spin.y * 13}px - 4.5px)`, width: 9, height: 9, borderRadius: "50%", background: "radial-gradient(circle at 35% 30%,#ff8a8a,#c4161e)" }} />
+      <i style={{ position: "absolute", left: `calc(50% + ${spin.x * o}px - ${d / 2}px)`, top: `calc(50% - ${spin.y * o}px - ${d / 2}px)`, width: d, height: d, borderRadius: "50%", background: "radial-gradient(circle at 35% 30%,#ff8a8a,#c4161e)" }} />
     </motion.button>
   );
 }
@@ -616,10 +618,18 @@ export default function PoolGame({ kit, ui, lang, S, role, names, level, net, on
     return () => { window.removeEventListener("resize", h); window.removeEventListener("orientationchange", h); };
   }, []);
 
+    const [topOff, setTopOff] = useState(240); // how far down the page the table starts
+  useEffect(() => {
+    const m = () => { const el = boxRef.current; if (el) setTopOff(el.getBoundingClientRect().top + window.scrollY); };
+    m();
+    const t = setTimeout(m, 300);
+    return () => clearTimeout(t);
+  }, [vp.w, vp.h]);
+
   /* ----- layout: vertical table on tall phones so the balls stay big ----- */
   const cw = Math.min(boxW, 520);
   const sH = cw / TWC;
-  const sV = Math.min(cw / TH, Math.max(380, vp.h - 210) / TWC);
+    const sV = Math.min(cw / TH, Math.max(300, vp.h - topOff - 16) / TWC);
   const phone = vp.w < 700;
   const vert = phone ? vp.h >= vp.w : vp.h > vp.w * 1.2 && sV > sH * 1.1;
   const s = vert ? sV : sH;
@@ -1014,6 +1024,11 @@ export default function PoolGame({ kit, ui, lang, S, role, names, level, net, on
     if (x.balls.some((b) => b.id !== 0 && b.on && Math.hypot(b.x - nx, b.y - ny) < 2 * R + 1)) return;
     cue.x = nx; cue.y = ny; cue.px = nx; cue.py = ny; sendAim();
   };
+    const turnTo = (w) => {
+    const x = G.current, cue = x.balls[0];
+    if (Math.hypot(w.x - cue.x, w.y - cue.y) < 20) return;
+    x.aim = Math.atan2(cue.y - w.y, cue.x - w.x); sendAim(); // the stick follows your finger
+  };
   const onDown = (e) => {
     sfxRef.current.unlock();
     setMenu(false);
@@ -1026,18 +1041,26 @@ export default function PoolGame({ kit, ui, lang, S, role, names, level, net, on
       if (bi >= 0) { x.call = bi; sendAim(); re(); return; }
     }
     if (x.hand && Math.hypot(w.x - cue.x, w.y - cue.y) < R * 2.6) { x.drag = "cue"; return; }
-    // on the stick: pull it back to power up, release to shoot
+    // touching the stick: drag it sideways to rotate, drag it straight back to power up
     const bx = Math.cos(x.aim + Math.PI), by = Math.sin(x.aim + Math.PI);
     const rx = w.x - cue.x, ry = w.y - cue.y, along = rx * bx + ry * by, perp = Math.abs(rx * -by + ry * bx);
     const thr = clamp(30 / view.current.s, 45, 130);
-    if (along > R + 2 && along < 720 && perp < thr) { x.drag = "pull"; x.pullA0 = along; x.pull0 = x.power * MAXPULL; return; }
+    if (along > R + 2 && along < 720 && perp < thr) { x.drag = "stick"; x.sx0 = w.x; x.sy0 = w.y; x.pullA0 = along; x.pull0 = x.power * MAXPULL; return; }
     x.drag = "aim"; setAimFrom(w);
   };
   const onMove = (e) => {
     if (!canActNow()) return;
     const x = G.current, w = toWorld(e);
+    if (x.drag === "stick") { // decide from the first movement: along the stick = power, sideways = rotate
+      const dx = w.x - x.sx0, dy = w.y - x.sy0;
+      if (Math.hypot(dx, dy) < 8) return;
+      const bx = Math.cos(x.aim + Math.PI), by = Math.sin(x.aim + Math.PI);
+      const da = Math.abs(dx * bx + dy * by), dp = Math.abs(dx * -by + dy * bx);
+      x.drag = da > dp * 1.5 ? "pull" : "turn";
+    }
     if (x.drag === "cue") moveCue(w);
     else if (x.drag === "aim") setAimFrom(w);
+    else if (x.drag === "turn") turnTo(w);
     else if (x.drag === "pull") {
       const cue = x.balls[0], bx = Math.cos(x.aim + Math.PI), by = Math.sin(x.aim + Math.PI);
       const along = (w.x - cue.x) * bx + (w.y - cue.y) * by;
@@ -1068,19 +1091,20 @@ export default function PoolGame({ kit, ui, lang, S, role, names, level, net, on
   /* ----- what to show ----- */
   const order = local ? [1, 2] : [myP, myP === 1 ? 2 : 1];
   const potted = (p) => (g.groups[p] ? g.balls.filter((b) => !b.on && grpOf(b.id) === g.groups[p]).length : 0);
+    const bsz = phone ? 17 : 20;
   const slots = (p) => {
     const gp = g.groups[p];
-    if (!gp) return Array.from({ length: 7 }, (_, i) => <EmptySlot key={i} />);
+    if (!gp) return Array.from({ length: 7 }, (_, i) => <EmptySlot key={i} size={bsz} />);
     const ids = GROUP_IDS[gp];
     const left = ids.filter((id) => g.balls.find((b) => b.id === id).on);
-    return ids.map((id, i) => (left.includes(id) ? <MiniBall key={id} id={id} /> : i === 6 && !left.length ? <MiniBall key="8" id={8} /> : <EmptySlot key={id} />));
+    return ids.map((id, i) => (left.includes(id) ? <MiniBall key={id} id={id} size={bsz} /> : i === 6 && !left.length ? <MiniBall key="8" id={8} size={bsz} /> : <EmptySlot key={id} size={bsz} />));
   };
   const nameTag = (p, right) => (
     <div className={`min-w-0 flex-1 ${right ? "text-right" : "text-left"}`}>
       <span className="inline-flex max-w-full items-center gap-1 rounded px-1.5 py-0.5" style={{ background: "rgba(0,0,0,.5)" }}>
-        <span style={{ color: "#f0cb62", fontSize: 10 }}>★</span>
-        <b className="truncate text-[11px]" style={{ color: g.turn === p && !g.over ? colorOf(p) : "#efe8d6" }}>{nameOf(p)}</b>
-        <span className="text-[9px] opacity-60">{potted(p)}</span>
+        {!phone && <span style={{ color: "#f0cb62", fontSize: 10 }}>★</span>}
+        <b className="min-w-0 truncate" style={{ fontSize: phone ? 10 : 11, color: g.turn === p && !g.over ? colorOf(p) : "#efe8d6" }}>{nameOf(p)}</b>
+        <span className="shrink-0 text-[9px] opacity-60">{potted(p)}</span>
       </span>
     </div>
   );
@@ -1088,34 +1112,34 @@ export default function PoolGame({ kit, ui, lang, S, role, names, level, net, on
 
   return (
     <div className="flex w-full flex-col items-center">
-      {/* ---------- header bar, like the app ---------- */}
+            {/* ---------- header bar, like the app ---------- */}
       <div
         className="relative w-full max-w-[520px] rounded-2xl px-2 pb-2 pt-2"
         style={{ zIndex: 20, background: "linear-gradient(180deg,#5b606d,#383c47)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.12), 0 8px 20px rgba(0,0,0,.45)", backgroundImage: "radial-gradient(rgba(0,0,0,.28) 1px, transparent 1.4px), linear-gradient(180deg,#5b606d,#383c47)", backgroundSize: "4px 4px, 100% 100%" }}
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <motion.button
             type="button" whileTap={{ scale: 0.92 }} onClick={() => setMenu((m) => !m)} aria-label="Menu"
-            className="grid shrink-0 place-items-center" style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(180deg,#46e062,#139028)", boxShadow: "inset 0 0 0 2px rgba(255,255,255,.4), 0 3px 8px rgba(0,0,0,.5)" }}
+            className="grid shrink-0 place-items-center" style={{ width: phone ? 30 : 36, height: phone ? 30 : 36, borderRadius: 10, background: "linear-gradient(180deg,#46e062,#139028)", boxShadow: "inset 0 0 0 2px rgba(255,255,255,.4), 0 3px 8px rgba(0,0,0,.5)" }}
           >
             <span className="block w-4 space-y-[3px]">{[0, 1, 2].map((i) => <i key={i} className="block h-[2.5px] rounded bg-white" />)}</span>
           </motion.button>
           {nameTag(order[0], false)}
-          <Avatar name={nameOf(order[0])} color={colorOf(order[0])} active={g.turn === order[0] && !g.over} />
-          <RackIcon />
-          <Avatar name={nameOf(order[1])} color={colorOf(order[1])} active={g.turn === order[1] && !g.over} />
+          <Avatar size={phone ? 32 : 40} name={nameOf(order[0])} color={colorOf(order[0])} active={g.turn === order[0] && !g.over} />
+          <RackIcon size={phone ? 30 : 38} />
+          <Avatar size={phone ? 32 : 40} name={nameOf(order[1])} color={colorOf(order[1])} active={g.turn === order[1] && !g.over} />
           {nameTag(order[1], true)}
-          <SpinBall spin={g.spin} enabled={canAct} onClick={() => { if (canAct) setSpinOpen(true); }} />
+          <SpinBall size={phone ? 34 : 42} spin={g.spin} enabled={canAct} onClick={() => { if (canAct) setSpinOpen(true); }} />
         </div>
-        <div className="mt-1.5 grid grid-cols-2 gap-3">
-          <div className="flex items-center gap-[3px] overflow-hidden rounded-full px-1.5 py-1" style={{ background: "rgba(0,0,0,.3)" }}>{slots(order[0])}</div>
-          <div className="flex items-center justify-end gap-[3px] overflow-hidden rounded-full px-1.5 py-1" style={{ background: "rgba(0,0,0,.3)" }}>{slots(order[1])}</div>
+        <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
+          <div className="flex min-w-0 items-center gap-[3px] overflow-x-auto rounded-full px-1.5 py-1" style={{ background: "rgba(0,0,0,.3)", scrollbarWidth: "none", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>{slots(order[0])}</div>
+          <div className="flex min-w-0 items-center gap-[3px] overflow-x-auto rounded-full px-1.5 py-1" style={{ background: "rgba(0,0,0,.3)", scrollbarWidth: "none", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>{slots(order[1])}</div>
         </div>
         <AnimatePresence>
           {menu && (
             <motion.div
               initial={{ opacity: 0, y: -6, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6 }}
-              className="absolute left-2 top-[50px] z-30 w-[190px] rounded-xl p-1.5" style={{ background: "linear-gradient(160deg,#1f2530,#0b0e14)", boxShadow: "inset 0 0 0 1px rgba(240,203,98,.5), 0 18px 40px rgba(0,0,0,.6)" }}
+              className="absolute left-2 top-[44px] z-30 w-[190px] rounded-xl p-1.5" style={{ background: "linear-gradient(160deg,#1f2530,#0b0e14)", boxShadow: "inset 0 0 0 1px rgba(240,203,98,.5), 0 18px 40px rgba(0,0,0,.6)" }}
             >
               <MenuItem label={`🔊 ${T.mSound}`} value={snd ? T.on : T.off} onClick={() => { sfxRef.current.unlock(); setSnd((v) => !v); }} />
               <MenuItem label={`📏 ${T.mGuide}`} value={guide ? T.on : T.off} onClick={() => setGuide((v) => !v)} />
