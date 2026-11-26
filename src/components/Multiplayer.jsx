@@ -6,7 +6,7 @@ import { tx } from "../lib/i18n";
 import { makeLink, fmtTime } from "./GameSocial";
 import ChessGame, { HOW as CHESS_HOW } from "./Chess";
 import LudoGame, { HOW as LUDO_HOW } from "./Ludo";
-
+import PoolGame, { HOW as POOL_HOW } from "./Pool";
 /* ---------- look ---------- */
 const GOLD = "linear-gradient(180deg,#fff3bf 0%,#f0cb62 30%,#b8862b 58%,#f6dc8c 80%,#c9972f 100%)";
 const goldText = { backgroundImage: GOLD, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" };
@@ -27,6 +27,7 @@ const SEATC = [GC, TC, "#ff7a8a", "#8ab4ff"]; // seat colors (Ludo uses all 4)
 const IMPL = {
   dots: ["duel", "pass"], memory: ["duel"], checkers: ["duel", "pass"],
   chess: ["duel", "pass", "cpu"], ludo: ["duel", "pass", "cpu"],
+  pool: ["duel", "pass", "cpu"],
 };
 const LEVELED = { dots: true, memory: true }; // these use the level in online / pass too
 const modesFor = (k, cfg) => {
@@ -145,6 +146,7 @@ const HOW = {
     ],
     chess: CHESS_HOW.en,
     ludo: LUDO_HOW.en,
+    pool: POOL_HOW.en,
     race: ["You both play the same game at the same time.", "The first one to win takes the King. A tie within 0.6 s goes to the faster time."],
     rg: {
       puzzle: "Slide the pieces to rebuild the King card.",
@@ -171,6 +173,7 @@ const HOW = {
     ],
     chess: CHESS_HOW.hi,
     ludo: LUDO_HOW.hi,
+    pool: POOL_HOW.hi,
     race: ["आप दोनों एक ही गेम एक साथ खेलते हैं।", "जो पहले जीते वही किंग पाता है। 0.6 सेकंड के भीतर बराबरी हो तो तेज़ समय जीतता है।"],
     rg: {
       puzzle: "टुकड़े सरकाकर किंग कार्ड पूरा करें।",
@@ -1754,6 +1757,7 @@ export default function MultiplayerFlow({ lang, T, cfg, soc, art, defaultName, u
            {game === "chess" && <ChessGame key={runKey} kit={KIT} ui={ui} lang={lang} S={S} role={gRole} names={names} level={level} side={side} lc={lc} opt={optOf(cfg, "chess")} net={netFor} onFinish={fin} />}
       {game === "ludo" && <LudoGame key={runKey} kit={KIT} ui={ui} lang={lang} S={S} role={gRole} seats={seats} mySeat={mySeat} level={level} lc={lc} opt={optOf(cfg, "ludo")} net={netFor} onFinish={fin} />}
        {online && <Reactions onEmo={sendEmo} floats={floats} />}
+             {game === "pool" && <PoolGame key={runKey} kit={KIT} ui={ui} lang={lang} S={S} role={gRole} names={names} level={level} lc={lc} opt={optOf(cfg, "pool")} net={netFor} onFinish={fin} />}
     </div>
   );
 }

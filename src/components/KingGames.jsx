@@ -11,6 +11,7 @@ import { useSocial, readLink, clearLink, ResultScreen, ChallengeScreen, Challeng
 import MultiplayerFlow, { MpHubButton, readRoomLink, clearRoomLink, KIT, mpText } from "./Multiplayer";
 import ChessGame from "./Chess";
 import LudoGame from "./Ludo";
+import PoolGame from "./Pool";
 
 const GOLD = "linear-gradient(180deg,#fff3bf 0%,#f0cb62 30%,#b8862b 58%,#f6dc8c 80%,#c9972f 100%)";
 const goldText = { backgroundImage: GOLD, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" };
@@ -193,6 +194,19 @@ const DEFAULTS = {
       easy: { bot: "easy", delay: 750 },
       medium: { bot: "medium", delay: 750 },
       hard: { bot: "hard", delay: 750 },
+    },
+  },
+
+    pool: {
+    enabled: true, sort: 13, untimed: true,
+    title: { en: "8 Ball Pool", hi: "8 बॉल पूल" },
+    desc: { en: "Sink your group, call the 8-ball and win the table.", hi: "अपना ग्रुप डालें, 8-बॉल कॉल करें और टेबल जीतें।" },
+    modes: "duel,pass,cpu",
+    options: { callEight: true, sound: true },
+    levels: {
+      easy: { err: 6, miss: 0.3, cand: 1, delay: 900, info_en: "Casual rival · misses often", info_hi: "आसान रिवाल · अक्सर चूकता है" },
+      medium: { err: 2, miss: 0.08, cand: 14, delay: 800, info_en: "Solid player · plans positions", info_hi: "अच्छा खिलाड़ी · चालें सोचता है" },
+      hard: { err: 0.5, miss: 0, cand: 36, delay: 700, info_en: "Sharp shooter · rarely misses", info_hi: "तेज़ निशानेबाज़ · शायद ही चूकता है" },
     },
   },
   
@@ -1676,6 +1690,17 @@ export function GameArt({ kind }) {
       </div>
     );
 
+      if (kind === "pool")
+    return (
+      <svg width="54" height="54" viewBox="0 0 54 54">
+        <rect x="3" y="9" width="48" height="36" rx="7" fill="#0f6a45" stroke="#f0cb62" strokeWidth="2.5" />
+        <circle cx="17" cy="27" r="5.5" fill="#f4f1ea" />
+        <circle cx="33" cy="22" r="5.5" fill="#f5c518" />
+        <circle cx="38" cy="32" r="5.5" fill="#15151a" />
+        <circle cx="7" cy="12" r="3" fill="#050a07" /><circle cx="47" cy="42" r="3" fill="#050a07" />
+      </svg>
+    );
+
   return <div className="font-serif text-[34px] font-bold leading-none" style={goldText}>21</div>;
 }
 
@@ -1732,11 +1757,10 @@ function SoloCpu({ game, T, lang, S, lcfg, opt, level, nick, n, side, onWin, onE
     game === "ludo"
       ? [{ name: me }, ...Array.from({ length: n - 1 }, (_, i) => ({ name: n > 2 ? `${S.computer} ${i + 1}` : S.computer, bot: true }))]
       : null;
-  const names = side === 2 ? { host: S.computer, guest: me } : { host: me, guest: S.computer };
+    const sd = game === "pool" ? 1 : side;
+  const names = sd === 2 ? { host: S.computer, guest: me } : { host: me, guest: S.computer };
   const fin = (w) => {
-    const won = game === "ludo" ? w === 0 : w === (side === 2 ? "guest" : "host");
-    if (won) onWin();
-    else setEnd(w === "draw" ? "draw" : "lose");
+    const won = game === "ludo" ? w === 0 : w === (sd === 2 ? "guest" : "host");
   };
   return (
     <div>
@@ -1745,6 +1769,9 @@ function SoloCpu({ game, T, lang, S, lcfg, opt, level, nick, n, side, onWin, onE
       )}
       {game === "ludo" && (
         <LudoGame key={run} kit={KIT} ui={UI} lang={lang} S={S} role="cpu" seats={seats} mySeat={0} level={level} lc={lcfg} opt={opt} net={NULL_NET} onFinish={fin} />
+      )}
+            {game === "pool" && (
+        <PoolGame key={run} kit={KIT} ui={UI} lang={lang} S={S} role="cpu" names={names} level={level} lc={lcfg} opt={opt} net={NULL_NET} onFinish={fin} />
       )}
       {end && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 text-center">
@@ -1968,7 +1995,7 @@ export default function KingGames() {
       {k === "higherlower" && <Retryable Game={HigherLower} ui={UI} key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
       {k === "watersort" && <Retryable Game={WaterSort} ui={UI} key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
       {k === "snake" && <Retryable Game={SnakeGame} ui={UI} key={keyId} cfg={lcfg} T={T} onWin={onWinFn} onExit={onExitFn} />}
-            {(k === "chess" || k === "ludo") && (
+            {(k === "chess" || k === "ludo" || k === "pool") && (
         <SoloCpu
           key={keyId} game={k} T={T} lang={lang} S={S} lcfg={lcfg} opt={(cfg[k] && cfg[k].options) || {}}
           level={lv} nick={soc.nick} n={Math.min(soloOpt.n, maxLudo)} side={soloOpt.side}

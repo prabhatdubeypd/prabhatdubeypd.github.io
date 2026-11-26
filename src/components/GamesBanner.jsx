@@ -27,8 +27,8 @@ const TASSEL_C = 3.2; // tassel damping
 const MAX_ANGLE = 1.3; // furthest you can pull it (radians, ~75deg)
 
 /* ---------- which games may appear ---------- */
-const KNOWN = ["chess", "ludo", "checkers", "watersort", "snake", "dots", "puzzle", "elements", "find", "higherlower", "blackjack", "memory"];
-const NEEDS_CPU = ["chess", "ludo"]; // shown only when their `modes` contains cpu (same rule as the games window)
+const KNOWN = ["chess", "ludo", "checkers", "watersort", "snake", "dots", "puzzle", "elements", "find", "higherlower", "blackjack", "memory", "pool"];
+const NEEDS_CPU = ["chess", "ludo", "pool"]; // shown only when their `modes` contains cpu (same rule as the games window)
 const hasCpu = (m) => /(^|,)\s*cpu\s*(,|$)/i.test(String(m || ""));
 const FALLBACK = {
   title: { en: "Want to play a game?", hi: "गेम खेलना है?" },
